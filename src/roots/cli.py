@@ -380,6 +380,48 @@ def stats_cmd():
             click.echo(f"  {tier}: {count}")
 
 
+@roots.command("tags")
+@click.argument("tag", required=False)
+def tags_cmd(tag: str | None):
+    """List all tags or show leaves with a specific tag.
+
+    Without arguments, lists all tags with counts.
+    With a tag argument, shows all leaves tagged with that tag.
+    """
+    kb = get_kb()
+    all_entries = kb.index.get_all_leaves()
+
+    if tag:
+        # Show leaves with this tag
+        matching = [e for e in all_entries if tag in e.tags]
+        if not matching:
+            click.echo(f"No leaves found with tag '{tag}'")
+            return
+
+        click.echo(f"Leaves tagged '{tag}' ({len(matching)}):\n")
+        for entry in matching:
+            leaf = kb.get_leaf(entry.file_path)
+            if leaf:
+                preview = leaf.content[:80] + "..." if len(leaf.content) > 80 else leaf.content
+                preview = preview.replace("\n", " ")
+                click.echo(f"  [{leaf.tier[0].upper()}] {entry.file_path}")
+                click.echo(f"      {preview}")
+    else:
+        # List all tags with counts
+        tag_counts: dict[str, int] = {}
+        for entry in all_entries:
+            for t in entry.tags:
+                tag_counts[t] = tag_counts.get(t, 0) + 1
+
+        if not tag_counts:
+            click.echo("No tags found.")
+            return
+
+        click.echo(f"Tags ({len(tag_counts)}):\n")
+        for t, count in sorted(tag_counts.items(), key=lambda x: (-x[1], x[0])):
+            click.echo(f"  {t}: {count}")
+
+
 @roots.command("prime")
 def prime_cmd():
     """
