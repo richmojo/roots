@@ -32,7 +32,7 @@ def get_kb() -> KnowledgeBase:
 
 
 @click.group()
-@click.version_option()
+@click.version_option(package_name="roots-kb")
 def roots():
     """Agent knowledge base - accumulate and search domain knowledge."""
     pass

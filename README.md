@@ -14,19 +14,35 @@ AI agents forget everything between sessions. Roots gives them persistent memory
 
 ## Installation
 
-```bash
-# Basic install (uses lightweight embeddings)
-pip install roots-kb
+**Quick install (requires [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/)):**
 
-# With high-quality embeddings (~500MB model download)
-pip install roots-kb[embeddings]
+```bash
+# One-liner
+curl -fsSL https://raw.githubusercontent.com/richmojo/roots/main/scripts/install.sh | bash
+
+# Or manually with uv
+uv tool install roots-kb
+
+# Or with pipx
+pipx install roots-kb
 ```
 
-Or with uv:
+**As a project dependency:**
 
 ```bash
+# Basic install (uses lightweight embeddings)
 uv add roots-kb
+
+# With high-quality embeddings (~500MB model download)
 uv add roots-kb --optional embeddings
+```
+
+**From source:**
+
+```bash
+git clone https://github.com/richmojo/roots.git
+cd roots
+uv tool install .
 ```
 
 ## Quick Start
