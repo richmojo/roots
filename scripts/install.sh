@@ -1,43 +1,28 @@
 #!/bin/bash
-# Install roots-kb globally using pipx or uv
+# Install roots from GitHub using uv
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/richmojo/roots/main/scripts/install.sh | bash
-#
-# Or manually:
-#   pipx install roots-kb
-#   uv tool install roots-kb
 
 set -e
 
-echo "Installing roots-kb..."
+echo "Installing roots..."
 
-# Check for uv first (preferred)
-if command -v uv &> /dev/null; then
-    echo "Using uv..."
-    uv tool install roots-kb
+# Check for uv
+if ! command -v uv &> /dev/null; then
+    echo "Error: 'uv' not found."
     echo ""
-    echo "✓ Installed! Run 'roots --help' to get started."
-    exit 0
+    echo "Install uv first:"
+    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+    exit 1
 fi
 
-# Fall back to pipx
-if command -v pipx &> /dev/null; then
-    echo "Using pipx..."
-    pipx install roots-kb
-    echo ""
-    echo "✓ Installed! Run 'roots --help' to get started."
-    exit 0
-fi
+# Install from GitHub
+uv tool install git+https://github.com/richmojo/roots.git
 
-# Neither found
-echo "Error: Neither 'uv' nor 'pipx' found."
 echo ""
-echo "Install one of:"
-echo "  - uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
-echo "  - pipx: python -m pip install --user pipx"
+echo "Installed! Run 'roots --help' to get started."
 echo ""
-echo "Then run this script again, or install manually:"
-echo "  uv tool install roots-kb"
-echo "  pipx install roots-kb"
-exit 1
+echo "Quick start:"
+echo "  roots init --hooks    # Initialize with Claude Code hooks"
+echo "  roots tree <name>     # Create a knowledge tree"
