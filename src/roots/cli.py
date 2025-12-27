@@ -3,6 +3,7 @@ roots - CLI for agent knowledge base.
 
 Commands:
     init     - Initialize a .roots directory
+    hooks    - Install Claude Code hooks
     tree     - Create/list knowledge trees
     branch   - Create/list branches
     add      - Add knowledge
@@ -15,6 +16,9 @@ Commands:
     stats    - Show statistics
     prime    - Output context for Claude Code hooks
 """
+
+import json
+from pathlib import Path
 
 import click
 
@@ -40,19 +44,129 @@ def roots():
 
 @roots.command("init")
 @click.option("--path", "-p", default=".", help="Directory to initialize .roots in")
-def init_cmd(path: str):
+@click.option("--hooks", is_flag=True, help="Also install Claude Code hooks")
+def init_cmd(path: str, hooks: bool):
     """Initialize a .roots directory."""
-    from pathlib import Path
-
     roots_path = Path(path) / ".roots"
     roots_path.mkdir(parents=True, exist_ok=True)
     (roots_path / "_index.db").touch()
 
     click.echo(f"Initialized roots at: {roots_path}")
-    click.echo("\nNext steps:")
-    click.echo("  roots tree <name>           # Create a knowledge tree")
-    click.echo("  roots branch <tree> <name>  # Create a branch")
-    click.echo("  roots add <branch> <text>   # Add knowledge")
+
+    if hooks:
+        # Also install hooks
+        _install_hooks(Path(path))
+    else:
+        click.echo("\nNext steps:")
+        click.echo("  roots hooks                 # Install Claude Code hooks")
+        click.echo("  roots tree <name>           # Create a knowledge tree")
+        click.echo("  roots branch <tree> <name>  # Create a branch")
+        click.echo("  roots add <branch> <text>   # Add knowledge")
+
+
+def _install_hooks(project_path: Path) -> bool:
+    """Install Claude Code hooks for roots. Returns True if successful."""
+    claude_dir = project_path / ".claude"
+    settings_file = claude_dir / "settings.local.json"
+
+    # Create .claude directory if needed
+    claude_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load existing settings or create new
+    if settings_file.exists():
+        try:
+            settings = json.loads(settings_file.read_text())
+        except json.JSONDecodeError:
+            settings = {}
+    else:
+        settings = {}
+
+    # Ensure hooks structure exists
+    if "hooks" not in settings:
+        settings["hooks"] = {}
+
+    # Define the roots hook
+    roots_hook = {
+        "matcher": "",
+        "hooks": [{"type": "command", "command": "roots prime"}],
+    }
+
+    # Add/update SessionStart hook
+    session_hooks = settings["hooks"].get("SessionStart", [])
+    # Check if roots hook already exists
+    has_roots = any(
+        any(h.get("command") == "roots prime" for h in entry.get("hooks", []))
+        for entry in session_hooks
+    )
+    if not has_roots:
+        session_hooks.append(roots_hook)
+        settings["hooks"]["SessionStart"] = session_hooks
+
+    # Add/update PreCompact hook
+    compact_hooks = settings["hooks"].get("PreCompact", [])
+    has_roots = any(
+        any(h.get("command") == "roots prime" for h in entry.get("hooks", []))
+        for entry in compact_hooks
+    )
+    if not has_roots:
+        compact_hooks.append(roots_hook)
+        settings["hooks"]["PreCompact"] = compact_hooks
+
+    # Write settings
+    settings_file.write_text(json.dumps(settings, indent=2) + "\n")
+    return True
+
+
+@roots.command("hooks")
+@click.option("--path", "-p", default=".", help="Project directory")
+@click.option("--remove", is_flag=True, help="Remove hooks instead of installing")
+def hooks_cmd(path: str, remove: bool):
+    """Install or remove Claude Code hooks for roots.
+
+    This configures SessionStart and PreCompact hooks to run 'roots prime',
+    injecting knowledge context at the start of each session and before
+    context compaction.
+    """
+    project_path = Path(path).resolve()
+    claude_dir = project_path / ".claude"
+    settings_file = claude_dir / "settings.local.json"
+
+    if remove:
+        if not settings_file.exists():
+            click.echo("No Claude Code settings found.")
+            return
+
+        settings = json.loads(settings_file.read_text())
+        hooks = settings.get("hooks", {})
+
+        # Remove roots hooks
+        for hook_type in ["SessionStart", "PreCompact"]:
+            if hook_type in hooks:
+                hooks[hook_type] = [
+                    entry
+                    for entry in hooks[hook_type]
+                    if not any(
+                        h.get("command") == "roots prime"
+                        for h in entry.get("hooks", [])
+                    )
+                ]
+                if not hooks[hook_type]:
+                    del hooks[hook_type]
+
+        settings["hooks"] = hooks
+        settings_file.write_text(json.dumps(settings, indent=2) + "\n")
+        click.echo("Removed roots hooks from Claude Code settings.")
+        return
+
+    # Install hooks
+    if _install_hooks(project_path):
+        click.echo(f"Installed Claude Code hooks at: {settings_file}")
+        click.echo("")
+        click.echo("Hooks configured:")
+        click.echo("  SessionStart: roots prime")
+        click.echo("  PreCompact:   roots prime")
+        click.echo("")
+        click.echo("Knowledge context will be injected on session start and before compaction.")
 
 
 @roots.command("tree")
