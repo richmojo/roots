@@ -643,23 +643,56 @@ def prune_cmd(
 
     if issues_found:
         click.echo(f"\n## Issues Found ({len(issues_found)} leaves)\n")
+        click.echo("Review each leaf and decide: update metadata, delete, or keep as-is.\n")
         for entry, issues in issues_found:
             leaf = kb.get_leaf(entry.file_path)
-            preview = leaf.content[:60] + "..." if leaf and len(leaf.content) > 60 else (leaf.content if leaf else "")
-            click.echo(f"  {entry.file_path}")
-            click.echo(f"    Issues: {', '.join(issues)}")
-            click.echo(f"    Preview: {preview}")
-            click.echo()
+            click.echo(f"### `{entry.file_path}`")
+            click.echo(f"  Issues: {', '.join(issues)}")
+            click.echo(f"  Tier: {entry.tier}, Confidence: {entry.confidence}")
+            click.echo(f"  Updated: {entry.updated_at.strftime('%Y-%m-%d')}")
+            if leaf:
+                # Show enough content for agent to make a decision
+                content = leaf.content[:300] + "..." if len(leaf.content) > 300 else leaf.content
+                click.echo("  Content:")
+                for line in content.split("\n"):
+                    click.echo(f"    > {line}")
+            click.echo("")
+            click.echo("  **Actions:**")
+            click.echo(f"    - Promote: `roots update {entry.file_path} --tier trunk -c 0.8`")
+            click.echo(f"    - Delete: `roots delete {entry.file_path}`")
+            click.echo("")
 
     if conflicts:
         click.echo(f"\n## Potential Conflicts ({len(conflicts)} pairs)\n")
         click.echo("These leaves are semantically very similar but in different branches.")
-        click.echo("Review to ensure they don't contain contradicting information.\n")
+        click.echo("Review to check for contradicting or redundant information.\n")
         for entry_a, entry_b, sim in conflicts[:10]:  # Limit output
-            click.echo(f"  Similarity: {sim:.2f}")
-            click.echo(f"    1: {entry_a.file_path}")
-            click.echo(f"    2: {entry_b.file_path}")
-            click.echo()
+            leaf_a = kb.get_leaf(entry_a.file_path)
+            leaf_b = kb.get_leaf(entry_b.file_path)
+            click.echo(f"### Similarity: {sim:.2f}")
+            click.echo("")
+            click.echo(f"**Leaf 1:** `{entry_a.file_path}`")
+            click.echo(f"  Tier: {entry_a.tier}, Confidence: {entry_a.confidence}")
+            if leaf_a:
+                # Show full content for agent review, truncate very long ones
+                content_a = leaf_a.content[:500] + "..." if len(leaf_a.content) > 500 else leaf_a.content
+                for line in content_a.split("\n"):
+                    click.echo(f"  > {line}")
+            click.echo("")
+            click.echo(f"**Leaf 2:** `{entry_b.file_path}`")
+            click.echo(f"  Tier: {entry_b.tier}, Confidence: {entry_b.confidence}")
+            if leaf_b:
+                content_b = leaf_b.content[:500] + "..." if len(leaf_b.content) > 500 else leaf_b.content
+                for line in content_b.split("\n"):
+                    click.echo(f"  > {line}")
+            click.echo("")
+            click.echo("**Action:** Review and decide:")
+            click.echo(f"  - Delete older/lower-confidence: `roots delete <path>`")
+            click.echo(f"  - Merge into one: Edit the keeper, delete the other")
+            click.echo(f"  - Keep both if they're actually different concepts")
+            click.echo("")
+            click.echo("---")
+            click.echo("")
 
     # Summary
     click.echo("\n## Summary")
