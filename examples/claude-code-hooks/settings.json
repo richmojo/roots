@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "session-start": ".claude/hooks/session-start.sh",
+    "pre-compact": ".claude/hooks/pre-compact.sh"
+  }
+}
