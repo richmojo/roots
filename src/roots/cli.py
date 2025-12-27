@@ -239,9 +239,9 @@ def branch_cmd(tree: str, name: str | None, description: str):
 
 
 @roots.command("add")
-@click.argument("branch")
+@click.argument("location")
 @click.argument("content")
-@click.option("--tree", "-t", default=None, help="Tree name (if branch name is ambiguous)")
+@click.option("--tree", "-t", default=None, help="Tree name (if not specified in location)")
 @click.option("--name", "-n", default=None, help="Leaf name (auto-generated if not provided)")
 @click.option(
     "--tier",
@@ -251,7 +251,7 @@ def branch_cmd(tree: str, name: str | None, description: str):
 @click.option("--confidence", "-c", default=0.5, type=float, help="Confidence 0-1")
 @click.option("--tags", default="", help="Comma-separated tags")
 def add_cmd(
-    branch: str,
+    location: str,
     content: str,
     tree: str | None,
     name: str | None,
@@ -259,8 +259,21 @@ def add_cmd(
     confidence: float,
     tags: str,
 ):
-    """Add knowledge to a branch."""
+    """Add knowledge to a branch.
+
+    Location can be:
+    - branch name: "patterns" (tree auto-detected or use --tree)
+    - tree/branch: "edge/patterns" (explicit tree)
+    """
     kb = get_kb()
+
+    # Parse location - support both "branch" and "tree/branch" syntax
+    if "/" in location and tree is None:
+        parts = location.split("/", 1)
+        tree = parts[0]
+        branch = parts[1]
+    else:
+        branch = location
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
