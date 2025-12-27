@@ -535,6 +535,21 @@ def prime_cmd():
                 )
                 output.append(f"- {preview}")
 
+        # Recent activity (last 5 updated leaves)
+        sorted_by_date = sorted(all_leaves, key=lambda e: e.updated_at, reverse=True)
+        recent = sorted_by_date[:5]
+        if recent:
+            output.append("")
+            output.append("## Recent Activity")
+            for entry in recent:
+                leaf = kb.get_leaf(entry.file_path)
+                if leaf:
+                    date_str = entry.updated_at.strftime("%Y-%m-%d")
+                    preview = leaf.content[:80].replace("\n", " ").strip()
+                    if len(leaf.content) > 80:
+                        preview += "..."
+                    output.append(f"- [{date_str}] `{entry.file_path}`: {preview}")
+
     output.append("")
     output.append("## Commands")
     output.append("```")
