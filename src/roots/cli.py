@@ -169,6 +169,34 @@ def hooks_cmd(path: str, remove: bool):
         click.echo("Knowledge context will be injected on session start and before compaction.")
 
 
+@roots.command("self-update")
+def self_update_cmd():
+    """Update roots to the latest version from GitHub."""
+    import subprocess
+    import sys
+
+    click.echo("Updating roots from GitHub...")
+
+    try:
+        result = subprocess.run(
+            ["uv", "tool", "install", "git+https://github.com/richmojo/roots.git", "--force"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            click.echo(f"Error updating: {result.stderr}", err=True)
+            sys.exit(1)
+
+        click.echo(result.stdout)
+        click.echo("Updated successfully! Run 'roots --version' to verify.")
+
+    except FileNotFoundError:
+        click.echo("Error: 'uv' not found. Install uv first:", err=True)
+        click.echo("  curl -LsSf https://astral.sh/uv/install.sh | sh", err=True)
+        sys.exit(1)
+
+
 @roots.command("tree")
 @click.argument("name", required=False)
 @click.option("--description", "-d", default="", help="Tree description")
