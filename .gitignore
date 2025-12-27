@@ -37,7 +37,11 @@ ENV/
 htmlcov/
 .tox/
 
-# Roots data (don't commit actual knowledge bases)
+# Roots index (regenerate with `roots reindex`)
+_index.db
+
+# Roots data (don't commit actual knowledge bases in the repo itself)
+# For projects using roots, you may want to commit .roots/ for persistence
 .roots/
 
 # OS

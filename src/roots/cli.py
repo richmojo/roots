@@ -467,5 +467,180 @@ def prime_cmd():
     click.echo("\n".join(output))
 
 
+@roots.command("prune")
+@click.option("--tree", "-t", default=None, help="Limit to specific tree")
+@click.option("--branch", "-b", default=None, help="Limit to specific branch")
+@click.option("--dry-run", is_flag=True, help="Show what would be pruned without deleting")
+@click.option("--stale-days", default=90, help="Flag leaves not updated in N days")
+@click.option("--min-confidence", default=0.3, help="Flag leaves below this confidence")
+@click.option("--detect-conflicts", is_flag=True, help="Find semantically similar leaves that may conflict")
+def prune_cmd(
+    tree: str | None,
+    branch: str | None,
+    dry_run: bool,
+    stale_days: int,
+    min_confidence: float,
+    detect_conflicts: bool,
+):
+    """
+    Analyze knowledge base for stale, low-quality, or conflicting information.
+
+    Helps maintain a clean knowledge base by identifying:
+    - Stale leaves (not updated in N days)
+    - Low-confidence leaves that were never validated
+    - Potentially conflicting information (semantically similar leaves)
+
+    Use --dry-run to preview without deleting.
+    """
+    from datetime import datetime, timedelta
+
+    from roots.embeddings import cosine_similarity
+
+    kb = get_kb()
+    all_entries = kb.index.get_all_leaves()
+
+    # Filter by tree/branch if specified
+    if tree or branch:
+        filtered = []
+        for entry in all_entries:
+            parts = Path(entry.file_path).parts
+            if tree and (len(parts) < 1 or parts[0] != tree):
+                continue
+            if branch and (len(parts) < 2 or parts[1] != branch):
+                continue
+            filtered.append(entry)
+        all_entries = filtered
+
+    if not all_entries:
+        click.echo("No leaves found matching criteria.")
+        return
+
+    issues_found = []
+    now = datetime.now()
+    stale_threshold = now - timedelta(days=stale_days)
+
+    # Check for stale and low-confidence
+    for entry in all_entries:
+        issues = []
+
+        # Stale check
+        if entry.updated_at < stale_threshold:
+            days_old = (now - entry.updated_at).days
+            issues.append(f"stale ({days_old} days)")
+
+        # Low confidence check
+        if entry.confidence < min_confidence:
+            issues.append(f"low confidence ({entry.confidence:.2f})")
+
+        if issues:
+            issues_found.append((entry, issues))
+
+    # Detect potential conflicts (semantically similar leaves)
+    conflicts = []
+    if detect_conflicts and len(all_entries) > 1:
+        click.echo("Analyzing for potential conflicts...")
+        for i, entry_a in enumerate(all_entries):
+            for entry_b in all_entries[i + 1 :]:
+                # Skip if same branch (related content expected)
+                parts_a = Path(entry_a.file_path).parts
+                parts_b = Path(entry_b.file_path).parts
+                if len(parts_a) >= 2 and len(parts_b) >= 2:
+                    if parts_a[0] == parts_b[0] and parts_a[1] == parts_b[1]:
+                        continue
+
+                similarity = cosine_similarity(entry_a.embedding, entry_b.embedding)
+                if similarity > 0.85:  # High similarity threshold
+                    conflicts.append((entry_a, entry_b, similarity))
+
+    # Report findings
+    if not issues_found and not conflicts:
+        click.echo("No issues found. Knowledge base looks healthy.")
+        return
+
+    if issues_found:
+        click.echo(f"\n## Issues Found ({len(issues_found)} leaves)\n")
+        for entry, issues in issues_found:
+            leaf = kb.get_leaf(entry.file_path)
+            preview = leaf.content[:60] + "..." if leaf and len(leaf.content) > 60 else (leaf.content if leaf else "")
+            click.echo(f"  {entry.file_path}")
+            click.echo(f"    Issues: {', '.join(issues)}")
+            click.echo(f"    Preview: {preview}")
+            click.echo()
+
+    if conflicts:
+        click.echo(f"\n## Potential Conflicts ({len(conflicts)} pairs)\n")
+        click.echo("These leaves are semantically very similar but in different branches.")
+        click.echo("Review to ensure they don't contain contradicting information.\n")
+        for entry_a, entry_b, sim in conflicts[:10]:  # Limit output
+            click.echo(f"  Similarity: {sim:.2f}")
+            click.echo(f"    1: {entry_a.file_path}")
+            click.echo(f"    2: {entry_b.file_path}")
+            click.echo()
+
+    # Summary
+    click.echo("\n## Summary")
+    click.echo(f"  Total leaves analyzed: {len(all_entries)}")
+    click.echo(f"  Stale/low-confidence: {len(issues_found)}")
+    click.echo(f"  Potential conflicts: {len(conflicts)}")
+
+    if not dry_run and issues_found:
+        click.echo("\n## Actions")
+        click.echo("To remove flagged leaves, review each and run:")
+        click.echo("  roots delete <path>")
+        click.echo("\nOr promote validated leaves:")
+        click.echo("  roots update <path> --tier trunk --confidence 0.8")
+
+
+@roots.command("delete")
+@click.argument("file_path")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+def delete_cmd(file_path: str, force: bool):
+    """Delete a leaf from the knowledge base."""
+    kb = get_kb()
+
+    leaf = kb.get_leaf(file_path)
+    if not leaf:
+        click.echo(f"Not found: {file_path}", err=True)
+        raise click.Abort()
+
+    if not force:
+        click.echo(f"Delete: {file_path}")
+        click.echo(f"  Tier: {leaf.tier}, Confidence: {leaf.confidence}")
+        preview = leaf.content[:100] + "..." if len(leaf.content) > 100 else leaf.content
+        click.echo(f"  Content: {preview}")
+        if not click.confirm("Confirm deletion?"):
+            click.echo("Cancelled.")
+            return
+
+    kb.delete_leaf(file_path)
+    click.echo(f"Deleted: {file_path}")
+
+
+@roots.command("update")
+@click.argument("file_path")
+@click.option("--tier", "-t", type=click.Choice(["roots", "trunk", "branches", "leaves"]))
+@click.option("--confidence", "-c", type=float, help="Confidence 0-1")
+@click.option("--tags", help="Comma-separated tags (replaces existing)")
+def update_cmd(file_path: str, tier: str | None, confidence: float | None, tags: str | None):
+    """Update a leaf's metadata (tier, confidence, tags)."""
+    kb = get_kb()
+
+    leaf = kb.get_leaf(file_path)
+    if not leaf:
+        click.echo(f"Not found: {file_path}", err=True)
+        raise click.Abort()
+
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+
+    kb.update_leaf(file_path, tier=tier, confidence=confidence, tags=tag_list)
+
+    # Show updated state
+    updated = kb.get_leaf(file_path)
+    click.echo(f"Updated: {file_path}")
+    click.echo(f"  Tier: {updated.tier}")
+    click.echo(f"  Confidence: {updated.confidence}")
+    click.echo(f"  Tags: {', '.join(updated.tags) if updated.tags else 'none'}")
+
+
 if __name__ == "__main__":
     main()
