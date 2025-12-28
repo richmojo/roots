@@ -593,17 +593,32 @@ def prime_cmd():
                         preview += "..."
                     output.append(f"- [{date_str}] `{entry.file_path}`: {preview}")
 
+    # Check if context hook is enabled
+    claude_settings = Path(".claude/settings.local.json")
+    context_hook_enabled = False
+    if claude_settings.exists():
+        try:
+            settings = json.loads(claude_settings.read_text())
+            prompt_hooks = settings.get("hooks", {}).get("UserPromptSubmit", [])
+            context_hook_enabled = any(
+                any("roots context" in h.get("command", "") for h in entry.get("hooks", []))
+                for entry in prompt_hooks
+            )
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    if context_hook_enabled:
+        output.append("")
+        output.append("**Note:** Context hook is enabled. Related knowledge paths may appear")
+        output.append("above your prompts. Use `roots get <path>` to view if relevant.")
+
     output.append("")
     output.append("## Commands")
     output.append("```")
     output.append("roots search <query>           # Semantic search")
     output.append("roots tags [tag]               # List tags or filter by tag")
-    output.append("roots show [tree]              # Show structure")
     output.append("roots get <path>               # View a leaf")
     output.append("roots add <branch> <content> --tier <tier> --tags <tags>")
-    output.append("roots update <path> --tier T   # Update tier/confidence/tags")
-    output.append("roots delete <path>            # Delete a leaf")
-    output.append("roots prune                    # Find stale/conflicting knowledge")
     output.append("```")
 
     click.echo("\n".join(output))
@@ -867,23 +882,12 @@ def context_cmd(prompt: str, mode: str, limit: int, threshold: float):
             overlap = prompt_words & entry_tags
             if overlap:
                 score = len(overlap) / max(len(entry_tags), 1)
-                results.append((entry, score, list(overlap)))
+                results.append((entry.file_path, list(overlap)))
 
-        # Sort by score
-        results.sort(key=lambda x: x[1], reverse=True)
         results = results[:limit]
 
         if results:
-            click.echo("## Relevant Knowledge (tag match)\n")
-            for entry, score, matched_tags in results:
-                leaf = kb.get_leaf(entry.file_path)
-                if leaf:
-                    click.echo(f"**`{entry.file_path}`** (matched: {', '.join(matched_tags)})")
-                    preview = leaf.content[:200].replace("\n", " ").strip()
-                    if len(leaf.content) > 200:
-                        preview += "..."
-                    click.echo(f"> {preview}")
-                    click.echo("")
+            click.echo("Related: " + ", ".join(f"`{path}`" for path, _ in results))
 
     elif mode == "lite":
         from roots.embeddings import LiteEmbedder, cosine_similarity
@@ -891,28 +895,23 @@ def context_cmd(prompt: str, mode: str, limit: int, threshold: float):
         embedder = LiteEmbedder()
         prompt_embedding = embedder.embed(prompt)
 
+        # Use lower default threshold for lite mode
+        effective_threshold = threshold if threshold != 0.5 else 0.3
+
         # Score each entry
         for entry in all_entries:
-            # Re-embed with lite embedder for comparison
             leaf = kb.get_leaf(entry.file_path)
             if leaf:
                 leaf_embedding = embedder.embed(leaf.content)
                 score = cosine_similarity(prompt_embedding, leaf_embedding)
-                if score >= threshold:
-                    results.append((entry, score, leaf))
+                if score >= effective_threshold:
+                    results.append((entry.file_path, score))
 
         results.sort(key=lambda x: x[1], reverse=True)
         results = results[:limit]
 
         if results:
-            click.echo("## Relevant Knowledge (lite similarity)\n")
-            for entry, score, leaf in results:
-                click.echo(f"**`{entry.file_path}`** (score: {score:.2f})")
-                preview = leaf.content[:200].replace("\n", " ").strip()
-                if len(leaf.content) > 200:
-                    preview += "..."
-                click.echo(f"> {preview}")
-                click.echo("")
+            click.echo("Related: " + ", ".join(f"`{path}`" for path, _ in results))
 
     elif mode == "semantic":
         from roots.embeddings import cosine_similarity
@@ -923,22 +922,13 @@ def context_cmd(prompt: str, mode: str, limit: int, threshold: float):
         for entry in all_entries:
             score = cosine_similarity(prompt_embedding, entry.embedding)
             if score >= threshold:
-                results.append((entry, score))
+                results.append((entry.file_path, score))
 
         results.sort(key=lambda x: x[1], reverse=True)
         results = results[:limit]
 
         if results:
-            click.echo("## Relevant Knowledge (semantic similarity)\n")
-            for entry, score in results:
-                leaf = kb.get_leaf(entry.file_path)
-                if leaf:
-                    click.echo(f"**`{entry.file_path}`** (score: {score:.2f})")
-                    preview = leaf.content[:200].replace("\n", " ").strip()
-                    if len(leaf.content) > 200:
-                        preview += "..."
-                    click.echo(f"> {preview}")
-                    click.echo("")
+            click.echo("Related: " + ", ".join(f"`{path}`" for path, _ in results))
 
 
 if __name__ == "__main__":
