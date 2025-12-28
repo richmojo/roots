@@ -1,9 +1,9 @@
 """
 embeddings - Vector embedding generation for semantic search.
 
-Supports two modes:
-- Full: Uses sentence-transformers for high-quality local embeddings
-- Lite: Falls back to TF-IDF style vectors when sentence-transformers unavailable
+Supports multiple embedding backends:
+- Sentence Transformers (BGE, MiniLM, Qwen, etc.)
+- Lite mode (n-gram hashing, zero dependencies)
 """
 
 import hashlib
@@ -20,7 +20,7 @@ class EmbedderProtocol(Protocol):
 
 
 class SentenceTransformerEmbedder:
-    """Generate embeddings using sentence-transformers (high quality, ~500MB model)."""
+    """Generate embeddings using sentence-transformers."""
 
     def __init__(self, model_name: str = "BAAI/bge-base-en-v1.5"):
         self.model_name = model_name
@@ -32,7 +32,7 @@ class SentenceTransformerEmbedder:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self.model_name)
+            self._model = SentenceTransformer(self.model_name, trust_remote_code=True)
         return self._model
 
     def embed(self, text: str) -> list[float]:
@@ -50,7 +50,7 @@ class LiteEmbedder:
     """
     Lightweight embedder using character n-gram hashing.
 
-    Not as good as sentence-transformers, but:
+    Not as good as neural embeddings, but:
     - Zero dependencies beyond numpy
     - Instant startup
     - Good enough for small knowledge bases
@@ -89,27 +89,34 @@ class LiteEmbedder:
         return [self.embed(t) for t in texts]
 
 
-def get_embedder(use_sentence_transformers: bool = True) -> EmbedderProtocol:
+def get_embedder(
+    model_name: str | None = None,
+    model_type: str = "sentence-transformers",
+) -> EmbedderProtocol:
     """
-    Get the best available embedder.
+    Get an embedder for the specified model.
 
     Args:
-        use_sentence_transformers: If True, try to use sentence-transformers.
-            Falls back to LiteEmbedder if not available.
+        model_name: Model name/path. If None, uses default BGE model.
+        model_type: Either "sentence-transformers" or "lite"
 
     Returns:
         An embedder instance.
     """
-    if use_sentence_transformers:
-        try:
-            # Check if sentence-transformers is available
-            import sentence_transformers  # noqa: F401
+    if model_type == "lite" or model_name == "lite":
+        return LiteEmbedder()
 
-            return SentenceTransformerEmbedder()
-        except ImportError:
-            pass
+    if model_name is None:
+        model_name = "BAAI/bge-base-en-v1.5"
 
-    return LiteEmbedder()
+    try:
+        # Check if sentence-transformers is available
+        import sentence_transformers  # noqa: F401
+
+        return SentenceTransformerEmbedder(model_name)
+    except ImportError:
+        # Fall back to lite mode
+        return LiteEmbedder()
 
 
 def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:

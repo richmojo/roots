@@ -4,6 +4,7 @@ roots - CLI for agent knowledge base.
 Commands:
     init     - Initialize a .roots directory
     hooks    - Install Claude Code hooks
+    config   - View/set configuration (embedding model, etc.)
     tree     - Create/list knowledge trees
     branch   - Create/list branches
     add      - Add knowledge
@@ -22,6 +23,7 @@ from pathlib import Path
 
 import click
 
+from roots.config import MODEL_ALIASES, SUGGESTED_MODELS, resolve_model
 from roots.knowledge_base import KnowledgeBase, find_roots_path
 
 
@@ -238,6 +240,76 @@ def self_update_cmd():
         click.echo("Error: 'uv' not found. Install uv first:", err=True)
         click.echo("  curl -LsSf https://astral.sh/uv/install.sh | sh", err=True)
         sys.exit(1)
+
+
+@roots.command("config")
+@click.argument("key", required=False)
+@click.argument("value", required=False)
+@click.option("--list-models", is_flag=True, help="List available embedding models")
+def config_cmd(key: str | None, value: str | None, list_models: bool):
+    """View or set configuration.
+
+    Without arguments, shows current config.
+
+    Examples:
+        roots config                    # Show current config
+        roots config --list-models      # List embedding model options
+        roots config model qwen-4b      # Set embedding model (alias)
+        roots config model Qwen/Qwen3-Embedding-4B  # Set model (full name)
+    """
+    kb = get_kb()
+
+    if list_models:
+        click.echo("Available embedding models (ordered by size/quality):\n")
+        for model in SUGGESTED_MODELS:
+            marker = " *" if model["alias"] == kb.config.embedding_model else "  "
+            click.echo(f"{marker} {model['alias']:<12} {model['size']:<10} {model['description']}")
+            click.echo(f"     -> {model['name']}")
+            click.echo("")
+        click.echo("* = currently active")
+        click.echo("\nYou can also use any HuggingFace model name directly:")
+        click.echo("  roots config model intfloat/e5-large-v2")
+        return
+
+    if key is None:
+        # Show current config
+        click.echo("Current configuration:\n")
+        model_name, model_type = kb.config.get_resolved_model()
+        alias = kb.config.embedding_model
+        click.echo(f"  model: {alias}")
+        if alias in MODEL_ALIASES:
+            click.echo(f"    -> {model_name}")
+        click.echo(f"    type: {model_type}")
+        click.echo("")
+        click.echo("Available settings:")
+        click.echo("  model    Embedding model (alias or HuggingFace name)")
+        click.echo("")
+        click.echo("Use 'roots config --list-models' to see available models")
+        return
+
+    if key == "model":
+        if value is None:
+            # Show current model
+            model_name, model_type = kb.config.get_resolved_model()
+            click.echo(f"Current model: {kb.config.embedding_model}")
+            click.echo(f"  Resolved to: {model_name}")
+            click.echo(f"  Type: {model_type}")
+        else:
+            # Set new model
+            old_model = kb.config.embedding_model
+            kb.config.embedding_model = value
+            model_name, model_type = resolve_model(value)
+
+            click.echo(f"Changed model: {old_model} -> {value}")
+            click.echo(f"  Resolved to: {model_name}")
+            click.echo(f"  Type: {model_type}")
+            click.echo("")
+            click.echo("IMPORTANT: Run 'roots reindex' to rebuild embeddings with the new model.")
+            click.echo("Different models produce incompatible embeddings.")
+    else:
+        click.echo(f"Unknown config key: {key}", err=True)
+        click.echo("Available keys: model")
+        raise click.Abort()
 
 
 @roots.command("tree")

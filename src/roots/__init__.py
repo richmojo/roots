@@ -15,8 +15,9 @@ Quick Start:
     results = kb.search("momentum indicators")
 """
 
+from roots.config import RootsConfig, SUGGESTED_MODELS
 from roots.knowledge_base import KnowledgeBase, Leaf, SearchResult
 from roots.index import IndexEntry
 
 __version__ = "0.1.0"
-__all__ = ["KnowledgeBase", "Leaf", "SearchResult", "IndexEntry"]
+__all__ = ["KnowledgeBase", "Leaf", "SearchResult", "IndexEntry", "RootsConfig", "SUGGESTED_MODELS"]

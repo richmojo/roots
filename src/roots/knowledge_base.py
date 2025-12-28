@@ -16,6 +16,7 @@ from typing import Literal
 
 import yaml
 
+from roots.config import RootsConfig
 from roots.embeddings import cosine_similarity, get_embedder
 from roots.index import IndexEntry, RootsIndex
 
@@ -95,15 +96,12 @@ class KnowledgeBase:
     def __init__(
         self,
         roots_path: Path | str | None = None,
-        use_sentence_transformers: bool = True,
     ):
         """
         Initialize the knowledge base.
 
         Args:
             roots_path: Path to .roots directory. If None, auto-detected.
-            use_sentence_transformers: If True, use high-quality embeddings.
-                Set to False for faster startup with lightweight embeddings.
         """
         if roots_path is None:
             roots_path = find_roots_path()
@@ -111,15 +109,20 @@ class KnowledgeBase:
         self.roots_path.mkdir(parents=True, exist_ok=True)
 
         self.index = RootsIndex(self.roots_path / "_index.db")
+        self.config = RootsConfig(self.roots_path)
         self._embedder = None
-        self._use_sentence_transformers = use_sentence_transformers
 
     @property
     def embedder(self):
-        """Lazy load embedder."""
+        """Lazy load embedder based on config."""
         if self._embedder is None:
-            self._embedder = get_embedder(self._use_sentence_transformers)
+            model_name, model_type = self.config.get_resolved_model()
+            self._embedder = get_embedder(model_name, model_type)
         return self._embedder
+
+    def reset_embedder(self) -> None:
+        """Reset embedder (call after changing model config)."""
+        self._embedder = None
 
     # -------------------------------------------------------------------------
     # Tree/Branch/Leaf Structure
