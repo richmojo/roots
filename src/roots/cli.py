@@ -120,12 +120,23 @@ def _install_hooks(project_path: Path) -> bool:
 @roots.command("hooks")
 @click.option("--path", "-p", default=".", help="Project directory")
 @click.option("--remove", is_flag=True, help="Remove hooks instead of installing")
-def hooks_cmd(path: str, remove: bool):
+@click.option(
+    "--context-mode",
+    type=click.Choice(["none", "tags", "lite", "semantic"]),
+    default="none",
+    help="Also add prompt context hook with specified mode",
+)
+def hooks_cmd(path: str, remove: bool, context_mode: str):
     """Install or remove Claude Code hooks for roots.
 
     This configures SessionStart and PreCompact hooks to run 'roots prime',
     injecting knowledge context at the start of each session and before
     context compaction.
+
+    Optionally add a prompt context hook with --context-mode:
+    - tags: Match prompt words against leaf tags (fast)
+    - lite: N-gram similarity (fast, basic)
+    - semantic: Sentence-transformers (slower, best quality)
     """
     project_path = Path(path).resolve()
     claude_dir = project_path / ".claude"
@@ -140,13 +151,13 @@ def hooks_cmd(path: str, remove: bool):
         hooks = settings.get("hooks", {})
 
         # Remove roots hooks
-        for hook_type in ["SessionStart", "PreCompact"]:
+        for hook_type in ["SessionStart", "PreCompact", "UserPromptSubmit"]:
             if hook_type in hooks:
                 hooks[hook_type] = [
                     entry
                     for entry in hooks[hook_type]
                     if not any(
-                        h.get("command") == "roots prime"
+                        h.get("command", "").startswith("roots ")
                         for h in entry.get("hooks", [])
                     )
                 ]
@@ -165,8 +176,40 @@ def hooks_cmd(path: str, remove: bool):
         click.echo("Hooks configured:")
         click.echo("  SessionStart: roots prime")
         click.echo("  PreCompact:   roots prime")
-        click.echo("")
-        click.echo("Knowledge context will be injected on session start and before compaction.")
+
+    # Optionally add context hook
+    if context_mode != "none":
+        settings = json.loads(settings_file.read_text())
+        if "hooks" not in settings:
+            settings["hooks"] = {}
+
+        context_hook = {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": f"roots context \"$PROMPT\" --mode {context_mode}",
+                }
+            ],
+        }
+
+        # Check if already exists
+        prompt_hooks = settings["hooks"].get("UserPromptSubmit", [])
+        has_context = any(
+            any("roots context" in h.get("command", "") for h in entry.get("hooks", []))
+            for entry in prompt_hooks
+        )
+        if not has_context:
+            prompt_hooks.append(context_hook)
+            settings["hooks"]["UserPromptSubmit"] = prompt_hooks
+            settings_file.write_text(json.dumps(settings, indent=2) + "\n")
+
+        click.echo(f"  UserPromptSubmit: roots context --mode {context_mode}")
+
+    click.echo("")
+    click.echo("Knowledge context will be injected on session start and before compaction.")
+    if context_mode != "none":
+        click.echo(f"Relevant knowledge will be shown for each prompt ({context_mode} matching).")
 
 
 @roots.command("self-update")
@@ -772,6 +815,130 @@ def update_cmd(file_path: str, tier: str | None, confidence: float | None, tags:
     click.echo(f"  Tier: {updated.tier}")
     click.echo(f"  Confidence: {updated.confidence}")
     click.echo(f"  Tags: {', '.join(updated.tags) if updated.tags else 'none'}")
+
+
+@roots.command("context")
+@click.argument("prompt")
+@click.option(
+    "--mode",
+    "-m",
+    type=click.Choice(["tags", "lite", "semantic"]),
+    default="tags",
+    help="Matching mode: tags (keyword), lite (n-gram), semantic (sentence-transformers)",
+)
+@click.option("--limit", "-n", default=3, help="Max results to show")
+@click.option("--threshold", "-t", default=0.5, type=float, help="Min similarity threshold (lite/semantic only)")
+def context_cmd(prompt: str, mode: str, limit: int, threshold: float):
+    """
+    Find relevant knowledge for a prompt.
+
+    Modes:
+    - tags: Match prompt words against leaf tags (fast, no ML)
+    - lite: N-gram similarity matching (fast, basic similarity)
+    - semantic: Sentence-transformers embeddings (slower, best quality)
+
+    Designed for use in Claude Code hooks to auto-inject context.
+
+    Example hook in .claude/settings.local.json:
+      "UserPromptSubmit": [{
+        "matcher": "",
+        "hooks": [{"type": "command", "command": "roots context \"$PROMPT\" --mode tags"}]
+      }]
+    """
+    kb = get_kb()
+    all_entries = kb.index.get_all_leaves()
+
+    if not all_entries:
+        return  # Silent exit if no knowledge
+
+    results = []
+
+    if mode == "tags":
+        # Extract words from prompt (simple tokenization)
+        prompt_words = set(
+            word.lower().strip(".,!?\"'()[]{}:;")
+            for word in prompt.split()
+            if len(word) > 2
+        )
+
+        # Score each entry by tag overlap
+        for entry in all_entries:
+            entry_tags = set(t.lower() for t in entry.tags)
+            overlap = prompt_words & entry_tags
+            if overlap:
+                score = len(overlap) / max(len(entry_tags), 1)
+                results.append((entry, score, list(overlap)))
+
+        # Sort by score
+        results.sort(key=lambda x: x[1], reverse=True)
+        results = results[:limit]
+
+        if results:
+            click.echo("## Relevant Knowledge (tag match)\n")
+            for entry, score, matched_tags in results:
+                leaf = kb.get_leaf(entry.file_path)
+                if leaf:
+                    click.echo(f"**`{entry.file_path}`** (matched: {', '.join(matched_tags)})")
+                    preview = leaf.content[:200].replace("\n", " ").strip()
+                    if len(leaf.content) > 200:
+                        preview += "..."
+                    click.echo(f"> {preview}")
+                    click.echo("")
+
+    elif mode == "lite":
+        from roots.embeddings import LiteEmbedder, cosine_similarity
+
+        embedder = LiteEmbedder()
+        prompt_embedding = embedder.embed(prompt)
+
+        # Score each entry
+        for entry in all_entries:
+            # Re-embed with lite embedder for comparison
+            leaf = kb.get_leaf(entry.file_path)
+            if leaf:
+                leaf_embedding = embedder.embed(leaf.content)
+                score = cosine_similarity(prompt_embedding, leaf_embedding)
+                if score >= threshold:
+                    results.append((entry, score, leaf))
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        results = results[:limit]
+
+        if results:
+            click.echo("## Relevant Knowledge (lite similarity)\n")
+            for entry, score, leaf in results:
+                click.echo(f"**`{entry.file_path}`** (score: {score:.2f})")
+                preview = leaf.content[:200].replace("\n", " ").strip()
+                if len(leaf.content) > 200:
+                    preview += "..."
+                click.echo(f"> {preview}")
+                click.echo("")
+
+    elif mode == "semantic":
+        from roots.embeddings import cosine_similarity
+
+        # Use the KB's embedder (sentence-transformers if available)
+        prompt_embedding = kb.embedder.embed(prompt)
+
+        for entry in all_entries:
+            score = cosine_similarity(prompt_embedding, entry.embedding)
+            if score >= threshold:
+                results.append((entry, score))
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        results = results[:limit]
+
+        if results:
+            click.echo("## Relevant Knowledge (semantic similarity)\n")
+            for entry, score in results:
+                leaf = kb.get_leaf(entry.file_path)
+                if leaf:
+                    click.echo(f"**`{entry.file_path}`** (score: {score:.2f})")
+                    preview = leaf.content[:200].replace("\n", " ").strip()
+                    if len(leaf.content) > 200:
+                        preview += "..."
+                    click.echo(f"> {preview}")
+                    click.echo("")
 
 
 if __name__ == "__main__":
