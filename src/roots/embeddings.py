@@ -19,8 +19,24 @@ class EmbedderProtocol(Protocol):
     def embed_batch(self, texts: list[str]) -> list[list[float]]: ...
 
 
+class ServerEmbedder:
+    """Embedder that uses the embedding server daemon."""
+
+    def __init__(self):
+        from roots.server import EmbeddingClient
+        self.client = EmbeddingClient
+
+    def embed(self, text: str) -> list[float]:
+        """Get embedding from server."""
+        return self.client.embed(text)
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Get embeddings from server."""
+        return self.client.embed_batch(texts)
+
+
 class SentenceTransformerEmbedder:
-    """Generate embeddings using sentence-transformers."""
+    """Generate embeddings using sentence-transformers (local)."""
 
     def __init__(self, model_name: str = "BAAI/bge-base-en-v1.5"):
         self.model_name = model_name
@@ -92,6 +108,7 @@ class LiteEmbedder:
 def get_embedder(
     model_name: str | None = None,
     model_type: str = "sentence-transformers",
+    use_server: bool = True,
 ) -> EmbedderProtocol:
     """
     Get an embedder for the specified model.
@@ -99,6 +116,7 @@ def get_embedder(
     Args:
         model_name: Model name/path. If None, uses default BGE model.
         model_type: Either "sentence-transformers" or "lite"
+        use_server: If True, use embedding server if running
 
     Returns:
         An embedder instance.
@@ -108,6 +126,17 @@ def get_embedder(
     """
     if model_type == "lite" or model_name == "lite":
         return LiteEmbedder()
+
+    # Check if server is running with the right model
+    if use_server:
+        try:
+            from roots.server import EmbeddingClient
+            if EmbeddingClient.is_running():
+                server_model = EmbeddingClient.get_model()
+                if server_model == model_name:
+                    return ServerEmbedder()
+        except:
+            pass
 
     if model_name is None:
         model_name = "BAAI/bge-base-en-v1.5"

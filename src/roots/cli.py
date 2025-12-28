@@ -5,6 +5,7 @@ Commands:
     init     - Initialize a .roots directory
     hooks    - Install Claude Code hooks
     config   - View/set configuration (embedding model, etc.)
+    server   - Start/stop embedding server daemon
     tree     - Create/list knowledge trees
     branch   - Create/list branches
     add      - Add knowledge
@@ -360,6 +361,102 @@ def config_cmd(key: str | None, value: str | None, list_models: bool, no_validat
         click.echo(f"Unknown config key: {key}", err=True)
         click.echo("Available keys: model")
         raise click.Abort()
+
+
+# -----------------------------------------------------------------------------
+# Server commands
+# -----------------------------------------------------------------------------
+
+
+@roots.group("server")
+def server_group():
+    """Manage embedding server daemon.
+
+    The server keeps the embedding model loaded in memory for fast inference.
+    All roots processes share the same server.
+    """
+    pass
+
+
+@server_group.command("start")
+@click.option("--foreground", "-f", is_flag=True, help="Run in foreground (don't daemonize)")
+def server_start_cmd(foreground: bool):
+    """Start the embedding server.
+
+    Loads the configured model and listens for embedding requests.
+    Runs as a background daemon by default.
+    """
+    from roots.server import start_server, EmbeddingClient
+
+    kb = get_kb()
+    model_name, model_type = kb.config.get_resolved_model()
+
+    if model_type == "lite":
+        click.echo("Lite mode doesn't need a server (instant embeddings)")
+        return
+
+    if EmbeddingClient.is_running():
+        current = EmbeddingClient.get_model()
+        if current == model_name:
+            click.echo(f"Server already running with {model_name}")
+            return
+        click.echo(f"Server running with {current}, will restart for {model_name}")
+
+    click.echo(f"Starting server with {model_name}...")
+    if foreground:
+        click.echo("(Press Ctrl+C to stop)")
+
+    start_server(model_name, model_type, foreground=foreground)
+
+
+@server_group.command("stop")
+def server_stop_cmd():
+    """Stop the embedding server."""
+    from roots.server import stop_server, EmbeddingClient
+
+    if not EmbeddingClient.is_running():
+        click.echo("Server not running")
+        return
+
+    stop_server()
+    click.echo("Server stopped")
+
+
+@server_group.command("status")
+def server_status_cmd():
+    """Check embedding server status."""
+    from roots.server import server_status
+
+    status = server_status()
+    if status["running"]:
+        click.echo(f"Server running")
+        click.echo(f"  Model: {status['model']}")
+        click.echo(f"  PID: {status['pid']}")
+        click.echo(f"  Socket: {status['socket']}")
+    else:
+        click.echo("Server not running")
+        click.echo("")
+        click.echo("Start with: roots server start")
+
+
+@server_group.command("restart")
+def server_restart_cmd():
+    """Restart the embedding server."""
+    from roots.server import stop_server, start_server, EmbeddingClient
+
+    kb = get_kb()
+    model_name, model_type = kb.config.get_resolved_model()
+
+    if model_type == "lite":
+        click.echo("Lite mode doesn't need a server")
+        return
+
+    if EmbeddingClient.is_running():
+        click.echo("Stopping server...")
+        stop_server()
+
+    click.echo(f"Starting server with {model_name}...")
+    start_server(model_name, model_type)
 
 
 @roots.command("tree")
