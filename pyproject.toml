@@ -24,6 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Install with: uv tool install roots-kb[embeddings]
 embeddings = [
     "sentence-transformers>=2.2",
 ]

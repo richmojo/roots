@@ -24,6 +24,7 @@ from pathlib import Path
 import click
 
 from roots.config import MODEL_ALIASES, SUGGESTED_MODELS, resolve_model
+from roots.embeddings import validate_model
 from roots.knowledge_base import KnowledgeBase, find_roots_path
 
 
@@ -246,7 +247,8 @@ def self_update_cmd():
 @click.argument("key", required=False)
 @click.argument("value", required=False)
 @click.option("--list-models", is_flag=True, help="List available embedding models")
-def config_cmd(key: str | None, value: str | None, list_models: bool):
+@click.option("--no-validate", is_flag=True, help="Skip model validation (don't download)")
+def config_cmd(key: str | None, value: str | None, list_models: bool, no_validate: bool):
     """View or set configuration.
 
     Without arguments, shows current config.
@@ -295,17 +297,65 @@ def config_cmd(key: str | None, value: str | None, list_models: bool):
             click.echo(f"  Resolved to: {model_name}")
             click.echo(f"  Type: {model_type}")
         else:
-            # Set new model
-            old_model = kb.config.embedding_model
-            kb.config.embedding_model = value
+            # Validate and download model before saving config
             model_name, model_type = resolve_model(value)
 
-            click.echo(f"Changed model: {old_model} -> {value}")
-            click.echo(f"  Resolved to: {model_name}")
-            click.echo(f"  Type: {model_type}")
-            click.echo("")
-            click.echo("IMPORTANT: Run 'roots reindex' to rebuild embeddings with the new model.")
-            click.echo("Different models produce incompatible embeddings.")
+            if model_name == "lite":
+                # Lite mode - no validation needed
+                old_model = kb.config.embedding_model
+                kb.config.embedding_model = value
+                click.echo(f"Changed model: {old_model} -> lite")
+                click.echo("  Using n-gram hashing (no ML model required)")
+                click.echo("")
+                click.echo("Run 'roots reindex' to rebuild embeddings.")
+            elif no_validate:
+                # Skip validation - user knows what they're doing
+                old_model = kb.config.embedding_model
+                kb.config.embedding_model = value
+                click.echo(f"Changed model: {old_model} -> {value}")
+                click.echo(f"  Resolved to: {model_name}")
+                click.echo("")
+                click.echo("Model will be downloaded on first use (reindex or search).")
+                click.echo("Run 'roots reindex' to rebuild embeddings.")
+            else:
+                # Validate model - download if needed
+                click.echo(f"Validating model: {model_name}")
+                click.echo("(This will download the model if not cached)")
+                click.echo("")
+
+                success, message, dim = validate_model(model_name)
+
+                if not success:
+                    click.echo(f"Error: {message}", err=True)
+                    click.echo("")
+                    if "not installed" in message:
+                        click.echo("sentence-transformers not installed. Options:")
+                        click.echo("")
+                        click.echo("  1. Install with embeddings support:")
+                        click.echo("     uv tool install git+https://github.com/richmojo/roots.git[embeddings] --force")
+                        click.echo("")
+                        click.echo("  2. Use lite mode (no ML, works now):")
+                        click.echo("     roots config model lite")
+                        click.echo("")
+                        click.echo("  3. Skip validation (download later in project env):")
+                        click.echo(f"     roots config model {value} --no-validate")
+                    else:
+                        click.echo("Model validation failed. Config not changed.")
+                        click.echo("")
+                        click.echo("Options:")
+                        click.echo("  - Use 'roots config model lite' for zero-dependency mode")
+                        click.echo("  - Use '--no-validate' to skip validation")
+                    raise click.Abort()
+
+                # Model works - save config
+                old_model = kb.config.embedding_model
+                kb.config.embedding_model = value
+
+                click.echo(f"Changed model: {old_model} -> {value}")
+                click.echo(f"  {message}")
+                click.echo(f"  Embedding dimension: {dim}")
+                click.echo("")
+                click.echo("Run 'roots reindex' to rebuild embeddings with the new model.")
     else:
         click.echo(f"Unknown config key: {key}", err=True)
         click.echo("Available keys: model")

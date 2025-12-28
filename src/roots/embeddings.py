@@ -102,6 +102,9 @@ def get_embedder(
 
     Returns:
         An embedder instance.
+
+    Raises:
+        ImportError: If sentence-transformers not installed and model_type != "lite"
     """
     if model_type == "lite" or model_name == "lite":
         return LiteEmbedder()
@@ -109,14 +112,51 @@ def get_embedder(
     if model_name is None:
         model_name = "BAAI/bge-base-en-v1.5"
 
+    # Don't silently fall back - if user wants a model, fail if unavailable
     try:
-        # Check if sentence-transformers is available
         import sentence_transformers  # noqa: F401
-
-        return SentenceTransformerEmbedder(model_name)
     except ImportError:
-        # Fall back to lite mode
-        return LiteEmbedder()
+        raise ImportError(
+            "sentence-transformers not installed. Install with:\n"
+            "  uv add sentence-transformers\n"
+            "Or use lite mode: roots config model lite"
+        )
+
+    return SentenceTransformerEmbedder(model_name)
+
+
+def validate_model(model_name: str) -> tuple[bool, str, int]:
+    """
+    Validate that a model can be loaded (downloads if needed).
+
+    Args:
+        model_name: Model name/path to validate
+
+    Returns:
+        Tuple of (success, message, embedding_dim)
+    """
+    if model_name == "lite":
+        return True, "Lite embedder (no model required)", 384
+
+    try:
+        import sentence_transformers  # noqa: F401
+    except ImportError:
+        return False, "sentence-transformers not installed", 0
+
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        print(f"Loading model {model_name}...")
+        print("(This may download the model on first use)")
+        model = SentenceTransformer(model_name, trust_remote_code=True)
+
+        # Get embedding dimension
+        test_emb = model.encode("test", normalize_embeddings=True)
+        dim = len(test_emb)
+
+        return True, f"Model loaded successfully on {model.device}", dim
+    except Exception as e:
+        return False, f"Failed to load model: {e}", 0
 
 
 def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
