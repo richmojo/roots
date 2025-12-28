@@ -527,23 +527,17 @@ def prime_cmd():
         all_tags.update(entry.tags)
 
     output = []
-    output.append("# Roots - Persistent Knowledge Base")
+    output.append("ROOTS - Persistent Knowledge Base")
     output.append("")
-    output.append("This is a persistent knowledge store for accumulating insights.")
-    output.append("**Save anything valuable** that would help future agents:")
-    output.append("- Patterns and strategies that work (or don't)")
-    output.append("- Domain-specific observations")
-    output.append("- Technical insights and gotchas")
-    output.append("- Lessons learned from experiments")
-    output.append("")
-    output.append("Knowledge persists across sessions. Search before reinventing.")
+    output.append("Persistent knowledge store. Save valuable insights for future sessions:")
+    output.append("patterns, observations, technical gotchas, lessons learned.")
+    output.append("Search before reinventing.")
     output.append("")
 
     if not trees:
-        output.append("No knowledge accumulated yet. Use `roots tree <name>` to start.")
+        output.append("No knowledge yet. Start with: roots tree <name>")
     else:
-        output.append(f"**{len(all_leaves)} knowledge items** across {len(trees)} trees")
-        output.append("")
+        output.append(f"{len(all_leaves)} items across {len(trees)} trees")
 
         # Tier summary
         tier_parts = []
@@ -556,42 +550,38 @@ def prime_cmd():
 
         # Trees
         output.append("")
-        output.append("## Trees")
+        output.append("Trees:")
         for tree in trees:
             branches = kb.list_branches(tree)
-            output.append(f"- **{tree}/** ({len(branches)} branches)")
+            output.append(f"  {tree}/ ({len(branches)} branches)")
 
         # Top tags
         if all_tags:
             output.append("")
-            output.append("## Tags")
-            output.append(f"{', '.join(sorted(all_tags)[:15])}")
+            output.append(f"Tags: {', '.join(sorted(all_tags)[:15])}")
 
         # Roots (always show - foundational knowledge)
         roots_leaves = kb.get_by_tier("roots")
         if roots_leaves:
             output.append("")
-            output.append("## Foundational Knowledge (roots)")
+            output.append("Foundational (roots tier):")
             for leaf in roots_leaves[:5]:
-                preview = (
-                    leaf.content[:100] + "..." if len(leaf.content) > 100 else leaf.content
-                )
-                output.append(f"- {preview}")
+                preview = leaf.content[:100].replace("\n", " ").strip()
+                if len(leaf.content) > 100:
+                    preview += "..."
+                output.append(f"  - {preview}")
 
         # Recent activity (last 5 updated leaves)
         sorted_by_date = sorted(all_leaves, key=lambda e: e.updated_at, reverse=True)
         recent = sorted_by_date[:5]
         if recent:
             output.append("")
-            output.append("## Recent Activity")
+            output.append("Recent:")
             for entry in recent:
                 leaf = kb.get_leaf(entry.file_path)
                 if leaf:
-                    date_str = entry.updated_at.strftime("%Y-%m-%d")
-                    preview = leaf.content[:80].replace("\n", " ").strip()
-                    if len(leaf.content) > 80:
-                        preview += "..."
-                    output.append(f"- [{date_str}] `{entry.file_path}`: {preview}")
+                    date_str = entry.updated_at.strftime("%m-%d")
+                    output.append(f"  [{date_str}] {entry.file_path}")
 
     # Check if context hook is enabled
     claude_settings = Path(".claude/settings.local.json")
@@ -609,17 +599,11 @@ def prime_cmd():
 
     if context_hook_enabled:
         output.append("")
-        output.append("**Note:** Context hook is enabled. Related knowledge paths may appear")
-        output.append("above your prompts. Use `roots get <path>` to view if relevant.")
+        output.append("Context hook enabled: related paths may appear above prompts.")
+        output.append("These are optional references. Use 'roots get <path>' if relevant.")
 
     output.append("")
-    output.append("## Commands")
-    output.append("```")
-    output.append("roots search <query>           # Semantic search")
-    output.append("roots tags [tag]               # List tags or filter by tag")
-    output.append("roots get <path>               # View a leaf")
-    output.append("roots add <branch> <content> --tier <tier> --tags <tags>")
-    output.append("```")
+    output.append("Commands: roots search <query> | roots get <path> | roots add <branch> <content>")
 
     click.echo("\n".join(output))
 
@@ -887,7 +871,7 @@ def context_cmd(prompt: str, mode: str, limit: int, threshold: float):
         results = results[:limit]
 
         if results:
-            click.echo("Related: " + ", ".join(f"`{path}`" for path, _ in results))
+            click.echo("Related: " + ", ".join(path for path, _ in results))
 
     elif mode == "lite":
         from roots.embeddings import LiteEmbedder, cosine_similarity
@@ -911,7 +895,7 @@ def context_cmd(prompt: str, mode: str, limit: int, threshold: float):
         results = results[:limit]
 
         if results:
-            click.echo("Related: " + ", ".join(f"`{path}`" for path, _ in results))
+            click.echo("Related: " + ", ".join(path for path, _ in results))
 
     elif mode == "semantic":
         from roots.embeddings import cosine_similarity
@@ -928,7 +912,7 @@ def context_cmd(prompt: str, mode: str, limit: int, threshold: float):
         results = results[:limit]
 
         if results:
-            click.echo("Related: " + ", ".join(f"`{path}`" for path, _ in results))
+            click.echo("Related: " + ", ".join(path for path, _ in results))
 
 
 if __name__ == "__main__":
