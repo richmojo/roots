@@ -191,6 +191,11 @@ class RootsIndex:
                 (from_path, to_path, relation),
             )
 
+    def clear_leaves(self) -> None:
+        """Drop all leaf entries (for reindexing with new model)."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM leaves")
+
     def _serialize_embedding(self, embedding: list[float]) -> bytes:
         """Serialize embedding to bytes for storage."""
         return struct.pack(f"{len(embedding)}f", *embedding)

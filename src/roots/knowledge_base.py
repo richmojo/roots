@@ -510,9 +510,14 @@ class KnowledgeBase:
         """
         Rebuild the index from all markdown files.
 
+        Clears existing embeddings first to handle model changes.
+
         Returns:
             Number of leaves indexed
         """
+        # Clear existing entries to handle embedding dimension changes
+        self.index.clear_leaves()
+
         count = 0
         for md_file in self.roots_path.rglob("*.md"):
             if md_file.name.startswith("_"):
