@@ -155,11 +155,11 @@ class KnowledgeBase:
 
     def add_branch(self, tree: str, branch: str, description: str = "") -> Path:
         """
-        Add a branch to a tree.
+        Add a branch to a tree. Supports nested paths.
 
         Args:
             tree: Tree name
-            branch: Branch name
+            branch: Branch name or path (e.g., "patterns" or "thesis/oi_divergence")
             description: Optional description
 
         Returns:
@@ -169,13 +169,18 @@ class KnowledgeBase:
         if not tree_path.exists():
             self.create_tree(tree)
 
-        branch_path = tree_path / self._slugify(branch)
-        branch_path.mkdir(exist_ok=True)
+        # Support nested branch paths like "thesis/oi_divergence"
+        branch_parts = branch.split("/")
+        branch_path = tree_path
+        for part in branch_parts:
+            branch_path = branch_path / self._slugify(part)
+            branch_path.mkdir(exist_ok=True)
 
+        # Only create meta for the final branch
         meta_path = branch_path / "_meta.yaml"
         if not meta_path.exists():
             meta = {
-                "name": branch,
+                "name": branch_parts[-1],  # Use last part as name
                 "description": description,
                 "created_at": datetime.now().isoformat(),
             }
@@ -212,7 +217,11 @@ class KnowledgeBase:
 
         # Resolve branch path
         if tree:
-            branch_path = self.roots_path / self._slugify(tree) / self._slugify(branch)
+            # Support nested branch paths like "thesis/oi_divergence"
+            branch_parts = branch.split("/")
+            branch_path = self.roots_path / self._slugify(tree)
+            for part in branch_parts:
+                branch_path = branch_path / self._slugify(part)
         else:
             # Try to find branch in existing trees
             branch_path = self._find_branch(branch)
@@ -575,12 +584,47 @@ class KnowledgeBase:
         return text, {}
 
     def _find_branch(self, branch: str) -> Path | None:
-        """Find a branch by name across all trees."""
-        slug = self._slugify(branch)
-        for tree in self.list_trees():
-            branch_path = self.roots_path / self._slugify(tree) / slug
-            if branch_path.exists():
-                return branch_path
+        """
+        Find a branch by name or path across all trees.
+
+        Supports:
+            - Simple name: "patterns" -> searches all trees
+            - Nested path: "thesis/oi_divergence" -> searches all trees for this subpath
+            - Full path: "research/thesis/oi_divergence" -> direct lookup
+        """
+        # Handle path with slashes
+        parts = branch.split("/")
+
+        if len(parts) >= 2:
+            # Could be tree/branch or branch/subbranch
+            # First try as tree/branch path
+            potential_tree = self._slugify(parts[0])
+            tree_path = self.roots_path / potential_tree
+            if tree_path.exists() and (tree_path / "_meta.yaml").exists():
+                # First part is a tree, rest is branch path
+                branch_path = tree_path
+                for part in parts[1:]:
+                    branch_path = branch_path / self._slugify(part)
+                if branch_path.exists():
+                    return branch_path
+
+            # Try as nested branch path in all trees
+            for tree in self.list_trees():
+                branch_path = self.roots_path / self._slugify(tree)
+                for part in parts:
+                    branch_path = branch_path / self._slugify(part)
+                if branch_path.exists():
+                    return branch_path
+        else:
+            # Simple branch name - search all trees
+            slug = self._slugify(branch)
+            for tree in self.list_trees():
+                # Search recursively for the branch
+                tree_path = self.roots_path / self._slugify(tree)
+                for path in tree_path.rglob(slug):
+                    if path.is_dir():
+                        return path
+
         return None
 
     def _generate_leaf_name(self, content: str) -> str:

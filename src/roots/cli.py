@@ -597,7 +597,12 @@ def tree_cmd(name: str | None, description: str):
 @click.argument("name", required=False)
 @click.option("--description", "-d", default="", help="Branch description")
 def branch_cmd(tree: str, name: str | None, description: str):
-    """Create a branch or list branches in a tree."""
+    """Create a branch or list branches in a tree.
+
+    Supports nested branches:
+        roots branch research thesis
+        roots branch research thesis/oi_divergence
+    """
     kb = get_kb()
 
     if name:
@@ -638,15 +643,21 @@ def add_cmd(
 
     Location can be:
     - branch name: "patterns" (tree auto-detected or use --tree)
-    - tree/branch: "edge/patterns" (explicit tree)
+    - tree/branch: "edge/patterns"
+    - tree/branch/subbranch: "research/thesis/oi_divergence"
     """
     kb = get_kb()
 
-    # Parse location - support both "branch" and "tree/branch" syntax
+    # Parse location - support nested paths
     if "/" in location and tree is None:
-        parts = location.split("/", 1)
-        tree = parts[0]
-        branch = parts[1]
+        parts = location.split("/")
+        # Check if first part is an existing tree
+        if parts[0] in kb.list_trees():
+            tree = parts[0]
+            branch = "/".join(parts[1:])
+        else:
+            # Treat entire path as branch, auto-detect tree
+            branch = location
     else:
         branch = location
 
