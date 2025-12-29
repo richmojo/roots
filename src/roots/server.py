@@ -38,7 +38,8 @@ class EmbeddingServer:
         from roots.embeddings import get_embedder
 
         print(f"Loading model: {self.model_name}", flush=True)
-        self.embedder = get_embedder(self.model_name, self.model_type)
+        # use_server=False to avoid circular dependency
+        self.embedder = get_embedder(self.model_name, self.model_type, use_server=False)
 
         # Warm up
         _ = self.embedder.embed("warmup")
@@ -52,8 +53,6 @@ class EmbeddingServer:
         self.socket.bind(str(SOCKET_PATH))
         self.socket.listen(10)
         self.socket.settimeout(1.0)
-
-        PID_FILE.write_text(str(os.getpid()))
 
         signal.signal(signal.SIGTERM, self._shutdown)
         signal.signal(signal.SIGINT, self._shutdown)
@@ -180,10 +179,8 @@ def start_server(model_name: str, model_type: str, foreground: bool = False):
     if EmbeddingClient.is_running():
         current = EmbeddingClient.get_model()
         if current == model_name:
-            print(f"Server already running with {model_name}")
             return True
         else:
-            print(f"Server running with {current}, restarting for {model_name}...")
             stop_server()
 
     if foreground:
@@ -191,7 +188,7 @@ def start_server(model_name: str, model_type: str, foreground: bool = False):
         server.start()
         return True
 
-    # Daemonize
+    # Double-fork to fully daemonize
     pid = os.fork()
     if pid > 0:
         # Parent - wait for server to be ready
@@ -199,24 +196,44 @@ def start_server(model_name: str, model_type: str, foreground: bool = False):
         for _ in range(60):  # Wait up to 60 seconds
             time.sleep(1)
             if EmbeddingClient.is_running():
-                print(f"Server started with {model_name}")
                 return True
-        print("Server failed to start (timeout)")
         return False
 
-    # Child - become daemon
+    # First child - become session leader
     os.setsid()
-    os.chdir("/")
 
-    # Close stdin, redirect stdout/stderr to log
-    sys.stdin.close()
+    # Second fork - prevent zombie and ensure full detachment
+    pid2 = os.fork()
+    if pid2 > 0:
+        os._exit(0)  # First child exits
+
+    # Grandchild - the actual daemon
+    os.chdir("/")
+    os.umask(0)
+
+    # Close all file descriptors
+    import resource
+    maxfd = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+    if maxfd == resource.RLIM_INFINITY:
+        maxfd = 1024
+    for fd in range(3, maxfd):
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+    # Redirect stdin/stdout/stderr
+    sys.stdin = open("/dev/null", "r")
     log = open(LOG_FILE, "a")
     sys.stdout = log
     sys.stderr = log
 
+    # Write PID after we're fully daemonized
+    PID_FILE.write_text(str(os.getpid()))
+
     server = EmbeddingServer(model_name, model_type)
     server.start()
-    sys.exit(0)
+    os._exit(0)
 
 
 def stop_server() -> bool:

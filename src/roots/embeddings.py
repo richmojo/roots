@@ -116,7 +116,7 @@ def get_embedder(
     Args:
         model_name: Model name/path. If None, uses default BGE model.
         model_type: Either "sentence-transformers" or "lite"
-        use_server: If True, use embedding server if running
+        use_server: If True, use embedding server (auto-starts if needed)
 
     Returns:
         An embedder instance.
@@ -127,19 +127,20 @@ def get_embedder(
     if model_type == "lite" or model_name == "lite":
         return LiteEmbedder()
 
-    # Check if server is running with the right model
+    if model_name is None:
+        model_name = "BAAI/bge-base-en-v1.5"
+
+    # Use server if running with matching model
     if use_server:
         try:
             from roots.server import EmbeddingClient
+
             if EmbeddingClient.is_running():
                 server_model = EmbeddingClient.get_model()
                 if server_model == model_name:
                     return ServerEmbedder()
-        except:
+        except Exception:
             pass
-
-    if model_name is None:
-        model_name = "BAAI/bge-base-en-v1.5"
 
     # Don't silently fall back - if user wants a model, fail if unavailable
     try:

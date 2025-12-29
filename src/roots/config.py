@@ -2,12 +2,17 @@
 config - Configuration management for roots.
 
 Handles persistent settings stored in .roots/_config.yaml.
+Also supports global config in ~/.config/roots/config.yaml for the embedding server.
 """
 
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+# Global config location (used by embedding server)
+GLOBAL_CONFIG_DIR = Path.home() / ".config" / "roots"
+GLOBAL_CONFIG_FILE = GLOBAL_CONFIG_DIR / "config.yaml"
 
 # Suggested embedding models (user can use any model, these are just suggestions)
 SUGGESTED_MODELS = [
@@ -102,8 +107,40 @@ def resolve_model(model_input: str) -> tuple[str, str]:
     return model_input, "sentence-transformers"
 
 
+# -----------------------------------------------------------------------------
+# Global config (for embedding server)
+# -----------------------------------------------------------------------------
+
+
+def get_global_config() -> dict[str, Any]:
+    """Get global config (used by embedding server)."""
+    if GLOBAL_CONFIG_FILE.exists():
+        return yaml.safe_load(GLOBAL_CONFIG_FILE.read_text()) or {}
+    return {}
+
+
+def set_global_config(key: str, value: Any) -> None:
+    """Set a global config value."""
+    GLOBAL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    config = get_global_config()
+    config[key] = value
+    GLOBAL_CONFIG_FILE.write_text(yaml.dump(config, default_flow_style=False))
+
+
+def get_server_model() -> tuple[str, str]:
+    """Get the model configured for the embedding server."""
+    config = get_global_config()
+    model = config.get("server_model", DEFAULT_MODEL)
+    return resolve_model(model)
+
+
+# -----------------------------------------------------------------------------
+# Per-project config
+# -----------------------------------------------------------------------------
+
+
 class RootsConfig:
-    """Configuration manager for roots."""
+    """Configuration manager for a .roots directory."""
 
     def __init__(self, roots_path: Path):
         self.roots_path = roots_path

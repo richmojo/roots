@@ -1,0 +1,13 @@
+[Unit]
+Description=Roots Embedding Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/roots server start --foreground
+Restart=on-failure
+RestartSec=5
+Environment=HOME=%h
+
+[Install]
+WantedBy=default.target

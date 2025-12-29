@@ -24,7 +24,7 @@ from pathlib import Path
 
 import click
 
-from roots.config import MODEL_ALIASES, SUGGESTED_MODELS, resolve_model
+from roots.config import MODEL_ALIASES, SUGGESTED_MODELS, resolve_model, get_server_model, set_global_config
 from roots.embeddings import validate_model
 from roots.knowledge_base import KnowledgeBase, find_roots_path
 
@@ -383,13 +383,12 @@ def server_group():
 def server_start_cmd(foreground: bool):
     """Start the embedding server.
 
-    Loads the configured model and listens for embedding requests.
+    Uses the globally configured model (set with 'roots server model').
     Runs as a background daemon by default.
     """
     from roots.server import start_server, EmbeddingClient
 
-    kb = get_kb()
-    model_name, model_type = kb.config.get_resolved_model()
+    model_name, model_type = get_server_model()
 
     if model_type == "lite":
         click.echo("Lite mode doesn't need a server (instant embeddings)")
@@ -441,11 +440,10 @@ def server_status_cmd():
 
 @server_group.command("restart")
 def server_restart_cmd():
-    """Restart the embedding server."""
+    """Restart the embedding server with the configured model."""
     from roots.server import stop_server, start_server, EmbeddingClient
 
-    kb = get_kb()
-    model_name, model_type = kb.config.get_resolved_model()
+    model_name, model_type = get_server_model()
 
     if model_type == "lite":
         click.echo("Lite mode doesn't need a server")
@@ -457,6 +455,121 @@ def server_restart_cmd():
 
     click.echo(f"Starting server with {model_name}...")
     start_server(model_name, model_type)
+
+
+@server_group.command("model")
+@click.argument("model", required=False)
+@click.option("--list", "-l", "list_models", is_flag=True, help="List available models")
+def server_model_cmd(model: str | None, list_models: bool):
+    """View or set the server's embedding model.
+
+    This is a global setting used by the embedding server.
+
+    Examples:
+        roots server model              # Show current model
+        roots server model --list       # List available models
+        roots server model qwen-0.6b    # Set model
+    """
+    if list_models:
+        click.echo("Available embedding models:\n")
+        current_model, _ = get_server_model()
+        for m in SUGGESTED_MODELS:
+            if m["type"] == "lite":
+                continue  # Skip lite for server
+            marker = " *" if m["name"] == current_model else "  "
+            click.echo(f"{marker} {m['alias']:<12} {m['size']:<10} {m['description']}")
+        click.echo("\n* = current server model")
+        return
+
+    if model is None:
+        # Show current
+        model_name, model_type = get_server_model()
+        click.echo(f"Server model: {model_name}")
+        return
+
+    # Set new model
+    model_name, model_type = resolve_model(model)
+
+    if model_type == "lite":
+        click.echo("Lite mode doesn't need a server")
+        return
+
+    # Validate model
+    click.echo(f"Validating model: {model_name}")
+    success, message, dim = validate_model(model_name)
+
+    if not success:
+        click.echo(f"Error: {message}", err=True)
+        raise click.Abort()
+
+    set_global_config("server_model", model)
+    click.echo(f"Server model set to: {model_name}")
+    click.echo(f"  {message}")
+    click.echo("")
+    click.echo("Restart server to apply: roots server restart")
+
+
+@server_group.command("install")
+def server_install_cmd():
+    """Install systemd user service for auto-start on login.
+
+    The service will start the embedding server when you log in
+    and restart it if it crashes.
+    """
+    import shutil
+    import subprocess
+
+    # Check if systemd user services are available
+    systemd_dir = Path.home() / ".config" / "systemd" / "user"
+    systemd_dir.mkdir(parents=True, exist_ok=True)
+
+    service_content = f"""[Unit]
+Description=Roots Embedding Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={shutil.which('roots')} server start --foreground
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+
+    service_path = systemd_dir / "roots-embedder.service"
+    service_path.write_text(service_content)
+
+    # Reload and enable
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "--user", "enable", "roots-embedder"], check=False)
+
+    click.echo(f"Installed: {service_path}")
+    click.echo("")
+    click.echo("Commands:")
+    click.echo("  systemctl --user start roots-embedder   # Start now")
+    click.echo("  systemctl --user status roots-embedder  # Check status")
+    click.echo("  systemctl --user stop roots-embedder    # Stop")
+    click.echo("")
+    click.echo("The server will auto-start on login.")
+
+
+@server_group.command("uninstall")
+def server_uninstall_cmd():
+    """Remove systemd user service."""
+    import subprocess
+
+    subprocess.run(["systemctl", "--user", "stop", "roots-embedder"], check=False)
+    subprocess.run(["systemctl", "--user", "disable", "roots-embedder"], check=False)
+
+    service_path = Path.home() / ".config" / "systemd" / "user" / "roots-embedder.service"
+    if service_path.exists():
+        service_path.unlink()
+        click.echo(f"Removed: {service_path}")
+    else:
+        click.echo("Service not installed")
+
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
 
 
 @roots.command("tree")
