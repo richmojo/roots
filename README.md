@@ -11,29 +11,18 @@ AI agents forget everything between sessions. Roots gives them persistent memory
 - **Confidence tiers** - Track how validated each piece of knowledge is
 - **Cross-references** - Link related or contradicting knowledge
 - **Claude Code integration** - Hooks to inject context on session start
+- **Embedding server** - Fast inference with model loaded once in memory
 
 ## Installation
 
 Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# Install as a CLI tool
+# Lite install (n-gram hashing, no ML model)
 uv tool install git+https://github.com/richmojo/roots.git
 
-# Or clone and install locally
-git clone https://github.com/richmojo/roots.git
-cd roots
-uv tool install .
-```
-
-**As a project dependency:**
-
-```bash
-# Basic install (uses lightweight embeddings)
-uv add git+https://github.com/richmojo/roots.git
-
-# With high-quality embeddings (~500MB model download)
-uv add "roots-kb[embeddings] @ git+https://github.com/richmojo/roots.git"
+# Full install with ML embeddings (recommended)
+uv tool install "git+https://github.com/richmojo/roots.git[embeddings]"
 ```
 
 ## Quick Start
@@ -55,6 +44,43 @@ roots search "momentum indicators"
 
 # View structure
 roots show
+```
+
+## Embedding Server (Recommended)
+
+For fast search (~0.2s instead of ~6s), run the embedding server:
+
+```bash
+# Set your preferred model
+roots server model qwen-0.6b    # Or: bge-base, bge-large, etc.
+
+# Install as systemd service (auto-starts on login)
+roots server install
+systemctl --user start roots-embedder
+
+# Check status
+roots server status
+```
+
+Available models (ordered by size):
+
+| Alias | Size | Description |
+|-------|------|-------------|
+| `bge-small` | ~130MB | Small, fast |
+| `bge-base` | ~400MB | Default, good balance |
+| `qwen-0.6b` | ~1.2GB | Qwen 0.6B, high quality |
+| `bge-large` | ~1.2GB | Large BGE model |
+| `qwen-4b` | ~8GB | Qwen 4B, needs GPU |
+
+Server commands:
+```bash
+roots server start      # Start daemon
+roots server stop       # Stop daemon
+roots server status     # Check status
+roots server restart    # Restart with new model
+roots server model      # Show/set model
+roots server install    # Install systemd service
+roots server uninstall  # Remove systemd service
 ```
 
 ## Concepts
@@ -118,6 +144,9 @@ roots add <branch> "content" \
     --confidence <0-1> \
     --tags "tag1,tag2"
 
+# Also supports tree/branch syntax
+roots add edge/patterns "content"
+
 # Retrieve
 roots get <path>                    # Get specific leaf
 roots search <query>                # Semantic search
@@ -130,38 +159,49 @@ roots link <from> <to> --relation contradicts
 roots related <path>                # Show related leaves
 ```
 
+### Configuration
+
+```bash
+# Per-project embedding model (stored in .roots/_config.yaml)
+roots config model qwen-0.6b
+roots config --list-models
+
+# Global server model (stored in ~/.config/roots/config.yaml)
+roots server model qwen-0.6b
+```
+
 ### Maintenance
 
 ```bash
 roots stats                         # Show statistics
 roots reindex                       # Rebuild search index
 roots prime                         # Output context (for hooks)
+roots prune                         # Find stale/conflicting knowledge
+roots tags                          # List all tags
+roots self-update                   # Update from GitHub
 ```
 
 ## Claude Code Integration
 
-Roots shines when integrated with Claude Code hooks. Add context on every session start:
-
-### `.claude/hooks/session-start.sh`
+Install hooks to inject context on session start:
 
 ```bash
-#!/bin/bash
-if [ -d ".roots" ]; then
-    roots prime
-fi
+roots hooks
 ```
 
-### `.claude/settings.json`
+This adds hooks to `.claude/settings.local.json` that run `roots prime` on:
+- Session start
+- Context compaction
 
-```json
-{
-  "hooks": {
-    "session-start": ".claude/hooks/session-start.sh"
-  }
-}
+### Context Matching
+
+Optionally match knowledge to each prompt:
+
+```bash
+roots hooks --context-mode tags     # Match by tags (fast)
+roots hooks --context-mode lite     # N-gram similarity
+roots hooks --context-mode semantic # ML embeddings (needs server)
 ```
-
-Now every Claude Code session starts with your accumulated knowledge.
 
 ### Suggested Workflow
 
@@ -215,17 +255,6 @@ print(leaf.content)
 # Link knowledge
 kb.link("path/to/leaf1.md", "path/to/leaf2.md", relation="supports")
 ```
-
-### Lightweight Mode
-
-Skip the ~500MB embedding model for faster startup:
-
-```python
-# Uses simple n-gram hashing instead of sentence-transformers
-kb = KnowledgeBase(use_sentence_transformers=False)
-```
-
-Good enough for small knowledge bases. Switch to full embeddings when you have 100+ items.
 
 ## Environment Variables
 
