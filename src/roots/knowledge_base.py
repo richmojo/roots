@@ -529,7 +529,8 @@ class KnowledgeBase:
 
         count = 0
         for md_file in self.roots_path.rglob("*.md"):
-            if md_file.name.startswith("_"):
+            # Skip meta files but not content files that happen to start with _
+            if md_file.name == "_meta.md":
                 continue
 
             rel_path = str(md_file.relative_to(self.roots_path))
@@ -633,7 +634,8 @@ class KnowledgeBase:
         name = content[:50].strip()
         name = re.sub(r"[^\w\s-]", "", name)
         name = re.sub(r"\s+", "_", name)
-        return name[:40] or "unnamed"
+        name = name[:40].strip("_") or "unnamed"  # Don't start/end with underscore
+        return name
 
     def _slugify(self, text: str) -> str:
         """Convert text to a valid directory/file name."""
