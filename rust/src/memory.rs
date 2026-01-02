@@ -111,6 +111,7 @@ impl Memories {
     }
 
     /// Full-text search
+    #[allow(dead_code)]
     pub fn search_text(&self, query: &str, limit: usize) -> Result<Vec<Memory>, String> {
         self.store
             .search_fts(query, limit)

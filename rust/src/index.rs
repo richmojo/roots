@@ -166,6 +166,7 @@ impl MemoryStore {
     }
 
     /// Full-text search
+    #[allow(dead_code)]
     pub fn search_fts(&self, query: &str, limit: usize) -> Result<Vec<Memory>> {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.content, m.confidence, m.created_at, m.updated_at, m.last_accessed_at, m.access_count
@@ -291,6 +292,7 @@ impl MemoryStore {
     }
 
     /// Record an access to a memory
+    #[allow(dead_code)]
     pub fn record_access(&self, id: i64) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         self.conn.execute(

@@ -13,6 +13,7 @@ const SOCKET_PATH: &str = "/tmp/roots-embedder.sock";
 /// Trait for embedding implementations
 pub trait Embedder {
     fn embed(&self, text: &str) -> Result<Vec<f32>, String>;
+    #[allow(dead_code)]
     fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, String>;
 }
 
@@ -36,6 +37,7 @@ impl LiteEmbedder {
         Self { dim: LITE_DIM }
     }
 
+    #[allow(dead_code)]
     pub fn with_dim(dim: usize) -> Self {
         Self { dim }
     }
