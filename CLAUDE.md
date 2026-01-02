@@ -2,45 +2,42 @@
 
 ## What is Roots?
 
-Roots is a persistent knowledge base for AI agents. Use it to accumulate domain knowledge that persists across sessions.
+Roots is persistent memory for AI agents. Use it to remember things across sessions.
 
 ## When to Use Roots
 
-**Add knowledge when you discover:**
+**Remember when you discover:**
 - Patterns that work (or don't)
+- User preferences and conventions
 - Gotchas and edge cases
-- Validated techniques
 - Debugging insights
 - Domain-specific rules
 
-**Search before reinventing:**
-- Before implementing something, search roots for existing knowledge
+**Recall before reinventing:**
+- Before implementing something, search for existing knowledge
 - Check if past sessions already solved similar problems
 
 ## CLI Commands
 
 ```bash
-# Search for relevant knowledge
-roots search "your query"
+# Remember something
+roots remember "insight or knowledge" --tags tag1,tag2 --confidence 0.8
 
-# Add new knowledge
-roots add <branch> "knowledge content" --tier <tier> --tags "tag1,tag2"
+# Recall by search
+roots recall "your query"
 
-# View structure
-roots show
+# Recall by tag
+roots recall --tag trading
 
-# Get specific leaf
-roots get <path>
+# List recent memories
+roots list
+
+# Update confidence after validation
+roots update <id> --confidence 0.9
+
+# View all tags
+roots tags
 ```
-
-## Tiers
-
-| Tier | When to Use |
-|------|-------------|
-| `leaves` | Raw observations, untested ideas |
-| `branches` | Tested once, promising |
-| `trunk` | Validated multiple times |
-| `roots` | Foundational, high confidence |
 
 ## Workflow
 
@@ -52,9 +49,8 @@ roots get <path>
 
 ```bash
 # Found something useful during work
-roots add patterns "Funding rate > 0.1% correlates with local tops" \
-    --tree trading --tier leaves --confidence 0.6 --tags "funding,reversals"
+roots remember "Funding rate > 0.1% often signals local tops" --tags trading,funding --confidence 0.6
 
 # Later, after validation
-roots update trading/patterns/funding_rate.md --tier trunk --confidence 0.8
+roots update 1 --confidence 0.9
 ```
