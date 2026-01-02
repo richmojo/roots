@@ -1,23 +1,41 @@
 """
-roots - A semantic knowledge base for AI agents.
+roots - Embedding server for AI agent memory.
 
-Accumulate and search domain knowledge across sessions.
-Store insights as markdown files, search via embeddings.
+The CLI is now written in Rust. This Python package provides
+the embedding server for semantic search.
 
-Quick Start:
-    from roots import KnowledgeBase
-
-    kb = KnowledgeBase()
-    kb.create_tree("trading")
-    kb.add_branch("trading", "patterns")
-    kb.add_leaf("patterns", "MACD crossovers work best in trending markets", tree="trading")
-
-    results = kb.search("momentum indicators")
+Usage:
+    # Start embedding server (called by Rust CLI)
+    roots server start
+    roots server stop
+    roots server status
 """
 
-from roots.config import RootsConfig, SUGGESTED_MODELS
-from roots.knowledge_base import KnowledgeBase, Leaf, SearchResult
-from roots.index import IndexEntry
+from roots.config import SUGGESTED_MODELS, get_server_model, resolve_model
+from roots.embeddings import (
+    EmbedderProtocol,
+    LiteEmbedder,
+    SentenceTransformerEmbedder,
+    ServerEmbedder,
+    get_embedder,
+)
+from roots.server import EmbeddingClient, EmbeddingServer, start_server, stop_server
 
-__version__ = "0.1.0"
-__all__ = ["KnowledgeBase", "Leaf", "SearchResult", "IndexEntry", "RootsConfig", "SUGGESTED_MODELS"]
+__version__ = "0.2.0"
+__all__ = [
+    # Server
+    "EmbeddingServer",
+    "EmbeddingClient",
+    "start_server",
+    "stop_server",
+    # Embeddings
+    "EmbedderProtocol",
+    "LiteEmbedder",
+    "SentenceTransformerEmbedder",
+    "ServerEmbedder",
+    "get_embedder",
+    # Config
+    "SUGGESTED_MODELS",
+    "get_server_model",
+    "resolve_model",
+]
