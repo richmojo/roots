@@ -23,6 +23,25 @@ enum Commands {
         /// Directory to initialize .roots in
         #[arg(short, long, default_value = ".")]
         path: String,
+
+        /// Also install Claude Code hooks
+        #[arg(long)]
+        hooks: bool,
+    },
+
+    /// Install Claude Code hooks
+    Hooks {
+        /// Directory containing .roots
+        #[arg(short, long, default_value = ".")]
+        path: String,
+
+        /// Remove hooks instead of installing
+        #[arg(long)]
+        remove: bool,
+
+        /// Add context hook on user message
+        #[arg(long)]
+        on_message: bool,
     },
 
     /// Remember something
@@ -178,7 +197,8 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Init { path } => cli::memory::run_init(&path),
+        Commands::Init { path, hooks } => cli::memory::run_init(&path, hooks),
+        Commands::Hooks { path, remove, on_message } => cli::memory::run_hooks(&path, remove, on_message),
         Commands::Remember {
             content,
             tags,

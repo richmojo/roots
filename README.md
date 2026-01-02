@@ -74,6 +74,9 @@ roots export                 # Dump as JSON or markdown
 
 roots prime                  # Output context (for hooks)
 roots context <prompt>       # Find relevant memories for prompt
+roots hooks                  # Install Claude Code hooks
+roots hooks --on-message     # With per-message context matching
+roots hooks --remove         # Remove hooks
 
 roots config                 # View/set configuration
 roots server start|stop|status|model  # Embedding server
@@ -120,21 +123,20 @@ roots server install
 ## Claude Code Integration
 
 ```bash
-# Add hooks to inject context on session start
-# (manually add to .claude/settings.json)
+# Install hooks
+roots hooks
+
+# With context matching on each message
+roots hooks --on-message
+
+# Remove hooks
+roots hooks --remove
 ```
 
-Hooks configuration:
-```json
-{
-  "hooks": {
-    "SessionStart": [{
-      "matcher": "",
-      "hooks": [{"type": "command", "command": "roots prime"}]
-    }]
-  }
-}
-```
+This installs:
+- **SessionStart**: Runs `roots prime` to show available memories
+- **PreCompact**: Re-injects context before summarization
+- **UserPromptSubmit** (with `--on-message`): Finds relevant memories for each prompt
 
 ## Example Workflow
 

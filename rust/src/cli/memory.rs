@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 /// Run the init command
-pub fn run_init(path: &str) -> Result<(), String> {
+pub fn run_init(path: &str, hooks: bool) -> Result<(), String> {
     let path = Path::new(path);
     let roots_path = path.join(".roots");
 
@@ -18,6 +18,125 @@ pub fn run_init(path: &str) -> Result<(), String> {
     let mem = Memories::init(path)?;
     println!("Initialized .roots at {}", mem.roots_path().display());
 
+    if hooks {
+        install_hooks(path, false)?;
+    }
+
+    Ok(())
+}
+
+/// Run the hooks command
+pub fn run_hooks(path: &str, remove: bool, on_message: bool) -> Result<(), String> {
+    let path = Path::new(path);
+
+    if remove {
+        remove_hooks(path)
+    } else {
+        install_hooks(path, on_message)
+    }
+}
+
+fn install_hooks(path: &Path, on_message: bool) -> Result<(), String> {
+    let claude_dir = path.join(".claude");
+    fs::create_dir_all(&claude_dir)
+        .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+
+    let settings_path = claude_dir.join("settings.json");
+
+    // Read existing settings or create new
+    let mut settings: serde_json::Value = if settings_path.exists() {
+        let content = fs::read_to_string(&settings_path)
+            .map_err(|e| format!("Failed to read settings: {}", e))?;
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // Add hooks
+    let hooks = settings
+        .as_object_mut()
+        .ok_or("Invalid settings format")?
+        .entry("hooks")
+        .or_insert(serde_json::json!({}));
+
+    let hooks_obj = hooks.as_object_mut().ok_or("Invalid hooks format")?;
+
+    // SessionStart hook
+    hooks_obj.insert(
+        "SessionStart".to_string(),
+        serde_json::json!([{
+            "matcher": "",
+            "hooks": [{
+                "type": "command",
+                "command": "roots prime"
+            }]
+        }]),
+    );
+
+    // PreCompact hook
+    hooks_obj.insert(
+        "PreCompact".to_string(),
+        serde_json::json!([{
+            "matcher": "",
+            "hooks": [{
+                "type": "command",
+                "command": "roots prime"
+            }]
+        }]),
+    );
+
+    // UserPromptSubmit hook for context on each message
+    if on_message {
+        hooks_obj.insert(
+            "UserPromptSubmit".to_string(),
+            serde_json::json!([{
+                "matcher": "",
+                "hooks": [{
+                    "type": "command",
+                    "command": "roots context \"$CLAUDE_USER_PROMPT\""
+                }]
+            }]),
+        );
+    }
+
+    // Write settings
+    let json = serde_json::to_string_pretty(&settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    fs::write(&settings_path, json)
+        .map_err(|e| format!("Failed to write settings: {}", e))?;
+
+    println!("Hooks installed:");
+    println!("  SessionStart: roots prime");
+    println!("  PreCompact:   roots prime");
+    if on_message {
+        println!("  UserPromptSubmit: roots context (finds relevant memories)");
+    }
+
+    Ok(())
+}
+
+fn remove_hooks(path: &Path) -> Result<(), String> {
+    let settings_path = path.join(".claude").join("settings.json");
+
+    if !settings_path.exists() {
+        println!("No hooks configured.");
+        return Ok(());
+    }
+
+    let content =
+        fs::read_to_string(&settings_path).map_err(|e| format!("Failed to read settings: {}", e))?;
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse settings: {}", e))?;
+
+    if let Some(obj) = settings.as_object_mut() {
+        obj.remove("hooks");
+    }
+
+    let json = serde_json::to_string_pretty(&settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    fs::write(&settings_path, json).map_err(|e| format!("Failed to write settings: {}", e))?;
+
+    println!("Hooks removed.");
     Ok(())
 }
 
