@@ -14,20 +14,24 @@ AI agents forget everything between sessions. Roots gives them persistent memory
 
 ## Installation
 
-### Rust CLI (Recommended)
+```bash
+curl -fsSL https://raw.githubusercontent.com/richmojo/roots/main/scripts/install.sh | bash
+```
+
+Or manually:
 
 ```bash
-# From source
 git clone https://github.com/richmojo/roots.git
 cd roots/rust && cargo install --path .
 ```
 
-### Python Embedding Server (Optional)
+### Embedding Server (Optional)
 
 For better search quality than the default lite mode:
 
 ```bash
 uv tool install "git+https://github.com/richmojo/roots.git[embeddings]"
+roots server start
 ```
 
 ## Quick Start
