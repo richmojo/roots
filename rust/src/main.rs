@@ -39,9 +39,9 @@ enum Commands {
         #[arg(long)]
         remove: bool,
 
-        /// Add context hook on user message
-        #[arg(long)]
-        on_message: bool,
+        /// Add context hook on user message (none, tags, lite, semantic)
+        #[arg(long, default_value = "none", value_parser = ["none", "tags", "lite", "semantic"])]
+        context_mode: String,
     },
 
     /// Remember something
@@ -131,12 +131,16 @@ enum Commands {
         /// The prompt to find context for
         prompt: String,
 
+        /// Search mode (tags, lite, semantic)
+        #[arg(short, long, default_value = "semantic", value_parser = ["tags", "lite", "semantic"])]
+        mode: String,
+
         /// Maximum results
         #[arg(short = 'n', long, default_value = "3")]
         limit: usize,
 
         /// Minimum similarity threshold
-        #[arg(short, long, default_value = "0.3")]
+        #[arg(short = 't', long, default_value = "0.3")]
         threshold: f64,
     },
 
@@ -198,7 +202,7 @@ fn main() {
 
     let result = match cli.command {
         Commands::Init { path, hooks } => cli::memory::run_init(&path, hooks),
-        Commands::Hooks { path, remove, on_message } => cli::memory::run_hooks(&path, remove, on_message),
+        Commands::Hooks { path, remove, context_mode } => cli::memory::run_hooks(&path, remove, &context_mode),
         Commands::Remember {
             content,
             tags,
@@ -221,9 +225,10 @@ fn main() {
         Commands::Prime => cli::context::run_prime(),
         Commands::Context {
             prompt,
+            mode,
             limit,
             threshold,
-        } => cli::context::run_context(&prompt, limit, threshold),
+        } => cli::context::run_context(&prompt, &mode, limit, threshold),
         Commands::Config {
             key,
             value,

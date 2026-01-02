@@ -1,6 +1,37 @@
 {
   "hooks": {
-    "session-start": ".claude/hooks/session-start.sh",
-    "pre-compact": ".claude/hooks/pre-compact.sh"
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roots prime"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roots prime"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "roots context --mode semantic \"$CLAUDE_USER_PROMPT\""
+          }
+        ]
+      }
+    ]
   }
 }

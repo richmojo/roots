@@ -42,7 +42,7 @@ pub fn run_prime() -> Result<(), String> {
 }
 
 /// Run the context command - find relevant memories for a prompt
-pub fn run_context(prompt: &str, limit: usize, threshold: f64) -> Result<(), String> {
+pub fn run_context(prompt: &str, mode: &str, limit: usize, threshold: f64) -> Result<(), String> {
     let mem = match Memories::open() {
         Ok(m) => m,
         Err(_) => {
@@ -51,7 +51,38 @@ pub fn run_context(prompt: &str, limit: usize, threshold: f64) -> Result<(), Str
         }
     };
 
-    let results = mem.recall(prompt, limit * 2)?;
+    let results = match mode {
+        "tags" => {
+            // Extract words from prompt and match against tags
+            let words: Vec<&str> = prompt.split_whitespace().collect();
+            let tags = mem.tags()?;
+            let matching_tags: Vec<String> = tags
+                .iter()
+                .filter(|(tag, _)| words.iter().any(|w| w.to_lowercase().contains(&tag.to_lowercase())))
+                .map(|(tag, _)| tag.clone())
+                .collect();
+
+            if matching_tags.is_empty() {
+                Vec::new()
+            } else {
+                // Get memories with matching tags
+                let mut all = Vec::new();
+                for tag in &matching_tags {
+                    all.extend(mem.recall_by_tag(tag, limit)?);
+                }
+                // Convert to SearchResult with score 1.0
+                all.into_iter()
+                    .take(limit)
+                    .map(|m| crate::types::SearchResult { memory: m, score: 1.0 })
+                    .collect()
+            }
+        }
+        "lite" | "semantic" => {
+            // Both use embedding search (lite embedder or server)
+            mem.recall(prompt, limit * 2)?
+        }
+        _ => Vec::new(),
+    };
 
     let filtered: Vec<_> = results
         .into_iter()

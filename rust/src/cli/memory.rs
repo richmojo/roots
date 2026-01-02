@@ -19,24 +19,24 @@ pub fn run_init(path: &str, hooks: bool) -> Result<(), String> {
     println!("Initialized .roots at {}", mem.roots_path().display());
 
     if hooks {
-        install_hooks(path, false)?;
+        install_hooks(path, "none")?;
     }
 
     Ok(())
 }
 
 /// Run the hooks command
-pub fn run_hooks(path: &str, remove: bool, on_message: bool) -> Result<(), String> {
+pub fn run_hooks(path: &str, remove: bool, context_mode: &str) -> Result<(), String> {
     let path = Path::new(path);
 
     if remove {
         remove_hooks(path)
     } else {
-        install_hooks(path, on_message)
+        install_hooks(path, context_mode)
     }
 }
 
-fn install_hooks(path: &Path, on_message: bool) -> Result<(), String> {
+fn install_hooks(path: &Path, context_mode: &str) -> Result<(), String> {
     let claude_dir = path.join(".claude");
     fs::create_dir_all(&claude_dir)
         .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
@@ -86,14 +86,15 @@ fn install_hooks(path: &Path, on_message: bool) -> Result<(), String> {
     );
 
     // UserPromptSubmit hook for context on each message
-    if on_message {
+    if context_mode != "none" {
+        let cmd = format!("roots context --mode {} \"$CLAUDE_USER_PROMPT\"", context_mode);
         hooks_obj.insert(
             "UserPromptSubmit".to_string(),
             serde_json::json!([{
                 "matcher": "",
                 "hooks": [{
                     "type": "command",
-                    "command": "roots context \"$CLAUDE_USER_PROMPT\""
+                    "command": cmd
                 }]
             }]),
         );
@@ -108,8 +109,8 @@ fn install_hooks(path: &Path, on_message: bool) -> Result<(), String> {
     println!("Hooks installed:");
     println!("  SessionStart: roots prime");
     println!("  PreCompact:   roots prime");
-    if on_message {
-        println!("  UserPromptSubmit: roots context (finds relevant memories)");
+    if context_mode != "none" {
+        println!("  UserPromptSubmit: roots context --mode {}", context_mode);
     }
 
     Ok(())
