@@ -26,6 +26,8 @@ impl Memories {
 
     /// Open a memory store at a specific path
     pub fn open_at(roots_path: PathBuf) -> Result<Self, String> {
+        use crate::embeddings::ServerEmbedder;
+
         if !roots_path.exists() {
             return Err(format!("Path does not exist: {}", roots_path.display()));
         }
@@ -34,8 +36,19 @@ impl Memories {
         let store =
             MemoryStore::open(&db_path).map_err(|e| format!("Failed to open store: {}", e))?;
 
-        let config = RootsConfig::new(roots_path.clone());
-        let (model_name, model_type) = config.get_resolved_model();
+        // If embedding server is running, use its model
+        let (model_name, model_type) = if ServerEmbedder::is_running() {
+            if let Ok(server_model) = ServerEmbedder::get_model() {
+                (server_model, "server".to_string())
+            } else {
+                let config = RootsConfig::new(roots_path.clone());
+                config.get_resolved_model()
+            }
+        } else {
+            let config = RootsConfig::new(roots_path.clone());
+            config.get_resolved_model()
+        };
+
         let embedder = get_embedder(Some(&model_name), &model_type, true);
 
         Ok(Self {
