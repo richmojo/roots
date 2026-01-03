@@ -281,3 +281,16 @@ def server_status() -> dict:
             "socket": str(SOCKET_PATH),
         }
     return {"running": False}
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Roots embedding server")
+    parser.add_argument("--model", required=True, help="Model name")
+    parser.add_argument("--type", default="sentence-transformers", help="Model type")
+    args = parser.parse_args()
+
+    # Run in foreground (Rust handles daemonization via nohup)
+    server = EmbeddingServer(args.model, args.type)
+    server.start()

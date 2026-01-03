@@ -24,19 +24,36 @@ pub fn run_start(foreground: bool) -> Result<(), String> {
 
     println!("Starting embedding server with model: {}", model_name);
 
-    // Find the Python roots package
-    let python_cmd = if foreground {
-        format!("python -m roots.server --model '{}'", model_name)
+    // Check if sentence-transformers is installed, install if needed
+    let check = Command::new("uv")
+        .args(["run", "python", "-c", "import sentence_transformers"])
+        .output();
+
+    if check.is_err() || !check.unwrap().status.success() {
+        println!("Installing sentence-transformers (first time only)...");
+        let install = Command::new("uv")
+            .args(["add", "sentence-transformers"])
+            .status()
+            .map_err(|e| format!("Failed to install sentence-transformers: {}", e))?;
+
+        if !install.success() {
+            return Err("Failed to install sentence-transformers".to_string());
+        }
+    }
+
+    // Use uv run to handle Python environment
+    let server_cmd = if foreground {
+        format!("uv run python -m roots.server --model '{}'", model_name)
     } else {
         format!(
-            "nohup python -m roots.server --model '{}' > /tmp/roots-server.log 2>&1 &",
+            "nohup uv run python -m roots.server --model '{}' > /tmp/roots-server.log 2>&1 &",
             model_name
         )
     };
 
     let status = Command::new("sh")
         .arg("-c")
-        .arg(&python_cmd)
+        .arg(&server_cmd)
         .status()
         .map_err(|e| format!("Failed to start server: {}", e))?;
 
@@ -46,12 +63,22 @@ pub fn run_start(foreground: bool) -> Result<(), String> {
             return Err("Server exited with error".to_string());
         }
     } else {
-        // Background mode - give it a moment to start
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        // Background mode - poll until server is ready (model loading can take a while)
+        println!("Waiting for model to load...");
+        let mut ready = false;
+        for i in 0..60 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if ServerEmbedder::is_running() {
+                ready = true;
+                break;
+            }
+            if i > 0 && i % 10 == 0 {
+                println!("Still loading... ({} seconds)", i);
+            }
+        }
 
-        if ServerEmbedder::is_running() {
+        if ready {
             println!("Server started successfully.");
-            println!("Log file: /tmp/roots-server.log");
         } else {
             return Err(
                 "Server failed to start. Check /tmp/roots-server.log for details.".to_string(),
@@ -223,7 +250,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python -m roots.server --model '{}'
+ExecStart=/bin/sh -c "uv run python -m roots.server --model '{}'"
 Restart=on-failure
 RestartSec=5
 
