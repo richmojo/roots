@@ -143,7 +143,7 @@ enum Commands {
         limit: usize,
 
         /// Minimum similarity threshold
-        #[arg(short = 't', long, default_value = "0.3")]
+        #[arg(short = 't', long, default_value = "0.5")]
         threshold: f64,
     },
 
