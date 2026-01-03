@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS tags (
     FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
 
 -- Full-text search (will error if already exists, that's ok)
@@ -342,6 +347,54 @@ impl MemoryStore {
         }
 
         Ok(tags)
+    }
+
+    // -------------------------------------------------------------------------
+    // Metadata
+    // -------------------------------------------------------------------------
+
+    /// Get a metadata value
+    pub fn get_metadata(&self, key: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare("SELECT value FROM metadata WHERE key = ?1")?;
+        let mut rows = stmt.query(params![key])?;
+
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Set a metadata value
+    pub fn set_metadata(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Get all memories with their embeddings for reindexing
+    pub fn get_all_for_reindex(&self) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self.conn.prepare("SELECT id, content FROM memories")?;
+        let mut results = Vec::new();
+        let mut rows = stmt.query([])?;
+
+        while let Some(row) = rows.next()? {
+            results.push((row.get(0)?, row.get(1)?));
+        }
+
+        Ok(results)
+    }
+
+    /// Update embedding for a memory
+    pub fn update_embedding(&self, id: i64, embedding: &[f32]) -> Result<()> {
+        let emb_bytes = Self::serialize_embedding(embedding);
+        self.conn.execute(
+            "UPDATE memories SET embedding = ?1 WHERE id = ?2",
+            params![emb_bytes, id],
+        )?;
+        Ok(())
     }
 }
 

@@ -123,6 +123,9 @@ enum Commands {
     /// Sync memories to markdown files for browsing
     Sync,
 
+    /// Rebuild embeddings with current model
+    Reindex,
+
     /// Output context for Claude Code hooks
     Prime,
 
@@ -222,6 +225,7 @@ fn main() {
         Commands::Stats => cli::memory::run_stats(),
         Commands::Export { format } => cli::memory::run_export(&format),
         Commands::Sync => cli::memory::run_sync(),
+        Commands::Reindex => cli::memory::run_reindex(),
         Commands::Prime => cli::context::run_prime(),
         Commands::Context {
             prompt,

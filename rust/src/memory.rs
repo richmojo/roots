@@ -6,11 +6,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const EMBEDDING_MODEL_KEY: &str = "embedding_model";
+
 /// The main memory interface
 pub struct Memories {
     roots_path: PathBuf,
     store: MemoryStore,
     embedder: Box<dyn Embedder>,
+    current_model: String,
 }
 
 impl Memories {
@@ -39,6 +42,7 @@ impl Memories {
             roots_path,
             store,
             embedder,
+            current_model: model_name,
         })
     }
 
@@ -67,6 +71,12 @@ impl Memories {
         confidence: f64,
         tags: &[String],
     ) -> Result<i64, String> {
+        // Store the embedding model on first use
+        let stored_model = self.get_stored_model()?;
+        if stored_model.is_none() {
+            self.set_stored_model(&self.current_model)?;
+        }
+
         let embedding = self
             .embedder
             .embed(content)
@@ -195,5 +205,63 @@ impl Memories {
         self.store
             .get_all_tags()
             .map_err(|e| format!("Failed to get tags: {}", e))
+    }
+
+    // =========================================================================
+    // Embedding model management
+    // =========================================================================
+
+    /// Get the embedding model stored in the database
+    pub fn get_stored_model(&self) -> Result<Option<String>, String> {
+        self.store
+            .get_metadata(EMBEDDING_MODEL_KEY)
+            .map_err(|e| format!("Failed to get metadata: {}", e))
+    }
+
+    /// Set the embedding model in the database
+    pub fn set_stored_model(&self, model: &str) -> Result<(), String> {
+        self.store
+            .set_metadata(EMBEDDING_MODEL_KEY, model)
+            .map_err(|e| format!("Failed to set metadata: {}", e))
+    }
+
+    /// Get the current embedding model
+    pub fn current_model(&self) -> &str {
+        &self.current_model
+    }
+
+    /// Check if the current model differs from the stored model
+    pub fn check_model_mismatch(&self) -> Result<Option<String>, String> {
+        if let Some(stored) = self.get_stored_model()? {
+            if stored != self.current_model {
+                return Ok(Some(stored));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Reindex all memories with the current embedding model
+    pub fn reindex(&self) -> Result<usize, String> {
+        let memories = self
+            .store
+            .get_all_for_reindex()
+            .map_err(|e| format!("Failed to get memories: {}", e))?;
+
+        let count = memories.len();
+        for (id, content) in memories {
+            let embedding = self
+                .embedder
+                .embed(&content)
+                .map_err(|e| format!("Failed to embed memory {}: {}", id, e))?;
+
+            self.store
+                .update_embedding(id, &embedding)
+                .map_err(|e| format!("Failed to update embedding for {}: {}", id, e))?;
+        }
+
+        // Update stored model to current
+        self.set_stored_model(&self.current_model)?;
+
+        Ok(count)
     }
 }

@@ -165,6 +165,12 @@ pub fn run_remember(content: &str, tags: &str, confidence: f64) -> Result<(), St
 pub fn run_recall(query: Option<&str>, tag: Option<&str>, limit: usize) -> Result<(), String> {
     let mem = Memories::open()?;
 
+    // Check for embedding model mismatch
+    if let Some(stored) = mem.check_model_mismatch()? {
+        eprintln!("Warning: Embedding model changed ({} -> {})", stored, mem.current_model());
+        eprintln!("Run 'roots reindex' to rebuild embeddings for better search quality.\n");
+    }
+
     if let Some(t) = tag {
         // Search by tag
         let memories = mem.recall_by_tag(t, limit)?;
@@ -496,4 +502,26 @@ fn slugify(text: &str, max_len: usize) -> String {
 /// Get the first line of text
 fn first_line(text: &str) -> &str {
     text.lines().next().unwrap_or(text).trim()
+}
+
+/// Run the reindex command - rebuild all embeddings with current model
+pub fn run_reindex() -> Result<(), String> {
+    let mem = Memories::open()?;
+
+    let stored = mem.get_stored_model()?;
+    let current = mem.current_model();
+
+    println!("Current model: {}", current);
+    if let Some(ref s) = stored {
+        if s != current {
+            println!("Stored model:  {} (mismatch!)", s);
+        }
+    }
+
+    println!("\nRebuilding embeddings...");
+    let count = mem.reindex()?;
+
+    println!("Reindexed {} memories with model: {}", count, current);
+
+    Ok(())
 }
