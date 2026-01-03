@@ -30,8 +30,8 @@ cd roots/rust && cargo install --path .
 For better search quality than the default lite mode:
 
 ```bash
-uv tool install "git+https://github.com/richmojo/roots.git[embeddings]"
-roots server start
+roots server model qwen-0.6b   # Choose a model
+roots server start             # Auto-installs dependencies on first run
 ```
 
 ## Quick Start
@@ -75,6 +75,7 @@ roots tags                   # List all tags
 roots stats                  # Show statistics
 roots sync                   # Export to markdown for browsing
 roots export                 # Dump as JSON or markdown
+roots reindex                # Rebuild embeddings after model change
 
 roots prime                  # Output context (for hooks)
 roots context <prompt>       # Find relevant memories for prompt
@@ -106,14 +107,15 @@ By default, uses `lite` mode (n-gram hashing) - fast, no dependencies.
 For better search quality, run the embedding server:
 
 ```bash
-# Set model
-roots server model bge-base   # Or: bge-small, qwen-0.6b, bge-large
-
-# Start server
+# Set model and start (auto-installs sentence-transformers on first run)
+roots server model qwen-0.6b
 roots server start
 
-# Or install as systemd service
+# Or install as systemd service for auto-start
 roots server install
+
+# After changing models, rebuild embeddings
+roots reindex
 ```
 
 | Alias | Size | Description |
