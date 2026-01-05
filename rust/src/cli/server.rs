@@ -243,6 +243,11 @@ pub fn run_install() -> Result<(), String> {
 
     let (model_name, _) = get_server_model();
 
+    // Get current working directory to use as WorkingDirectory in service
+    let cwd = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+    let cwd_str = cwd.to_string_lossy();
+
     let service_content = format!(
         r#"[Unit]
 Description=Roots Embedding Server
@@ -250,6 +255,7 @@ After=network.target
 
 [Service]
 Type=simple
+WorkingDirectory={}
 ExecStart=/bin/sh -c "uv run python -m roots.server --model '{}'"
 Restart=on-failure
 RestartSec=5
@@ -257,7 +263,7 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 "#,
-        model_name
+        cwd_str, model_name
     );
 
     let service_path = systemd_dir.join("roots-embedder.service");
@@ -281,6 +287,7 @@ WantedBy=default.target
         .map_err(|e| format!("Failed to start service: {}", e))?;
 
     println!("Installed systemd user service: roots-embedder");
+    println!("Working directory: {}", cwd_str);
     println!("\nThe server will now start automatically on login.");
     println!("\nManage with:");
     println!("  systemctl --user status roots-embedder");
